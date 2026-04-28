@@ -51,6 +51,7 @@ function init() {
       hdr           INTEGER DEFAULT 0,
       dolby_vision  INTEGER DEFAULT 0,
       atmos         INTEGER DEFAULT 0,
+      certification TEXT,
       favorite      INTEGER DEFAULT 0,
       watchlisted   INTEGER DEFAULT 0,
       added_at      INTEGER DEFAULT (unixepoch()),
@@ -65,6 +66,9 @@ function init() {
       last_watched INTEGER DEFAULT (unixepoch())
     );
   `);
+
+  // Migrate existing databases that pre-date the certification column
+  try { db.exec('ALTER TABLE media ADD COLUMN certification TEXT'); } catch (_) {}
 }
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -113,13 +117,13 @@ function saveMedia(item) {
       (path, filename, title, year, tmdb_id, imdb_id, overview, tagline,
        poster_path, backdrop_path, genres, rating, rt_score, runtime,
        language, cast, director, subtitles,
-       quality, hdr, dolby_vision, atmos,
+       quality, hdr, dolby_vision, atmos, certification,
        added_at, last_updated)
     VALUES
       (@path, @filename, @title, @year, @tmdbId, @imdbId, @overview, @tagline,
        @posterPath, @backdropPath, @genres, @rating, @rtScore, @runtime,
        @language, @cast, @director, @subtitles,
-       @quality, @hdr, @dolbyVision, @atmos,
+       @quality, @hdr, @dolbyVision, @atmos, @certification,
        unixepoch(), unixepoch())
   `, params);
 }
@@ -131,6 +135,7 @@ function updateMedia(id, u) {
     poster_path: u.posterPath, backdrop_path: u.backdropPath,
     genres: u.genres, rating: u.rating, rt_score: u.rtScore,
     runtime: u.runtime, language: u.language, cast: u.cast, director: u.director,
+    certification: u.certification,
   };
   const fields = Object.entries(map).filter(([, v]) => v !== undefined);
   if (!fields.length) return;

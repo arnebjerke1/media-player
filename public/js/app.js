@@ -8,6 +8,7 @@ let allMedia        = [];
 let config          = {};
 let currentSearch   = '';
 let activeGenre     = '';
+let activeAge       = '';   // age / certification filter
 let activeQF        = 'all';   // quick-filter
 let obStep          = 0;
 let obFolders       = [];
@@ -94,6 +95,11 @@ function setupHeaderScroll() {
 // ── Onboarding ────────────────────────────────────────────────────────────────
 function showOnboarding() {
   document.getElementById('onboarding').classList.remove('hidden');
+  // Pre-fill API keys from .env if the inputs are still empty
+  const tmdbInput = document.getElementById('ob-tmdb-key');
+  const omdbInput = document.getElementById('ob-omdb-key');
+  if (tmdbInput && !tmdbInput.value && config.tmdbApiKey) tmdbInput.value = config.tmdbApiKey;
+  if (omdbInput && !omdbInput.value && config.omdbApiKey) omdbInput.value = config.omdbApiKey;
 }
 function hideOnboarding() {
   document.getElementById('onboarding').classList.add('hidden');
@@ -113,6 +119,11 @@ function obNext() {
   if (obStep === 0) {
     // Save theme choice
     applyTheme(obTheme);
+  }
+  if (obStep === 1) {
+    // Auto-add any folder path that was typed but not yet added
+    const input = document.getElementById('ob-folder-input');
+    if (input && input.value.trim()) obAddFolder();
   }
   obStep = Math.min(obStep + 1, 2);
   updateStepDots();
@@ -212,6 +223,11 @@ function getFilteredMedia() {
   // Genre filter
   if (activeGenre) {
     list = list.filter(m => (m.genres || []).includes(activeGenre));
+  }
+
+  // Age / certification filter
+  if (activeAge) {
+    list = list.filter(m => m.certification === activeAge);
   }
 
   // Search
@@ -456,6 +472,18 @@ document.getElementById('quick-filters')?.addEventListener('click', e => {
   updateAllCount(filtered.length);
 });
 
+// ── Age Filters ───────────────────────────────────────────────────────────────
+document.getElementById('age-filters')?.addEventListener('click', e => {
+  const btn = e.target.closest('.age-chip');
+  if (!btn) return;
+  activeAge = btn.dataset.age;
+  document.querySelectorAll('.age-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const filtered = getFilteredMedia();
+  renderGrid(filtered);
+  updateAllCount(filtered.length);
+});
+
 // ── Movie Modal ───────────────────────────────────────────────────────────────
 let currentModalId = null;
 
@@ -484,9 +512,10 @@ async function openModal(id) {
 
   // Meta row
   const parts = [];
-  if (m.year)     parts.push(`<span class="modal-year">${m.year}</span>`);
-  if (m.runtime)  parts.push(`<span class="modal-runtime">${m.runtime} min</span>`);
-  if (m.language) parts.push(`<span>${m.language.toUpperCase()}</span>`);
+  if (m.year)           parts.push(`<span class="modal-year">${m.year}</span>`);
+  if (m.runtime)        parts.push(`<span class="modal-runtime">${m.runtime} min</span>`);
+  if (m.certification)  parts.push(`<span class="cert-badge">${esc(m.certification)}</span>`);
+  if (m.language)       parts.push(`<span>${m.language.toUpperCase()}</span>`);
   // Quality tags
   if (m.quality)        parts.push(`<span class="qbadge qbadge-${m.quality === '4K' ? '4k' : 'hd'}">${m.quality}</span>`);
   if (m.dolby_vision)   parts.push(`<span class="qbadge qbadge-dv">Dolby Vision</span>`);

@@ -76,6 +76,42 @@ body.theme-horizon {
                  linear-gradient(to top,   rgba(15,10,4,1) 0%,  transparent 50%);
 }
 
+body.theme-forest {
+  --bg:          #050f08;
+  --bg2:         #0d1f12;
+  --bg3:         #162d1c;
+  --bg-glass:    rgba(5, 15, 8, .92);
+  --accent:      #22c55e;
+  --accent2:     #16a34a;
+  --accent-glow: rgba(34,197,94,.3);
+  --text:        #f0fdf4;
+  --text2:       #86efac;
+  --text3:       #4ade80;
+  --border:      rgba(34,197,94,.15);
+  --card-shadow: 0 8px 32px rgba(0,0,0,.7);
+  --radius:      8px;
+  --hero-grad:   linear-gradient(to right, rgba(5,15,8,1) 30%, transparent 70%),
+                 linear-gradient(to top,   rgba(5,15,8,1) 0%,  transparent 50%);
+}
+
+body.theme-violet {
+  --bg:          #080612;
+  --bg2:         #110e1f;
+  --bg3:         #1c172e;
+  --bg-glass:    rgba(8, 6, 18, .92);
+  --accent:      #8b5cf6;
+  --accent2:     #7c3aed;
+  --accent-glow: rgba(139,92,246,.35);
+  --text:        #f5f3ff;
+  --text2:       #c4b5fd;
+  --text3:       #7c6bb0;
+  --border:      rgba(139,92,246,.2);
+  --card-shadow: 0 8px 32px rgba(0,0,0,.7);
+  --radius:      8px;
+  --hero-grad:   linear-gradient(to right, rgba(8,6,18,1) 30%, transparent 70%),
+                 linear-gradient(to top,   rgba(8,6,18,1) 0%,  transparent 50%);
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { background: transparent; }
@@ -184,6 +220,8 @@ body.theme-horizon {
 .tp-spotlight { background: #141414; }
 .tp-breeze    { background: #0d1117; }
 .tp-horizon   { background: #0f0a04; }
+.tp-forest    { background: #050f08; }
+.tp-violet    { background: #080612; }
 
 .tp-bar {
   display: flex; align-items: center; gap: 6px;
@@ -195,6 +233,8 @@ body.theme-horizon {
 .tp-spotlight .tp-dot { background: #e50914; }
 .tp-breeze    .tp-dot { background: #58a6ff; }
 .tp-horizon   .tp-dot { background: #f59e0b; }
+.tp-forest    .tp-dot { background: #22c55e; }
+.tp-violet    .tp-dot { background: #8b5cf6; }
 
 .tp-cards {
   display: flex; gap: 5px;
@@ -206,6 +246,8 @@ body.theme-horizon {
 .tp-spotlight .tp-c { background: #2d2d2d; }
 .tp-breeze    .tp-c { background: #21262d; }
 .tp-horizon   .tp-c { background: #2a1c0d; }
+.tp-forest    .tp-c { background: #162d1c; }
+.tp-violet    .tp-c { background: #1c172e; }
 
 .theme-label {
   padding: 8px 12px;
@@ -621,6 +663,15 @@ body.theme-horizon {
 }
 .modal-year { font-weight: 600; }
 .modal-runtime::before { content: '·'; margin-right: 12px; }
+.cert-badge {
+  display: inline-block;
+  padding: 2px 7px; border-radius: 3px;
+  font-size: 12px; font-weight: 700;
+  background: var(--bg3);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  letter-spacing: .4px;
+}
 
 .ratings-row { display: flex; gap: 14px; margin-bottom: 16px; align-items: center; }
 .rating-pill {
@@ -877,6 +928,7 @@ body.theme-horizon {
 /* ── Watchlist / Favourites tab ───────────────────────────────────────────── */
 .quick-filters {
   display: flex; gap: 8px; margin-bottom: 0; margin-top: 8px;
+  flex-wrap: wrap;
 }
 .qf-btn {
   padding: 6px 16px; border-radius: 20px;
@@ -888,6 +940,26 @@ body.theme-horizon {
 }
 .qf-btn:hover  { color: var(--text); }
 .qf-btn.active { background: var(--accent); color: #fff; border-color: transparent; }
+
+/* ── Age-rating filter ────────────────────────────────────────────────────── */
+.age-filters {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; flex-wrap: wrap;
+}
+.age-filter-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; color: var(--text3);
+  white-space: nowrap;
+}
+.age-chip {
+  padding: 4px 13px; border-radius: 20px;
+  font-size: 12px; font-weight: 700;
+  background: var(--bg3); color: var(--text2);
+  border: 1px solid var(--border);
+  cursor: pointer; transition: all .15s;
+}
+.age-chip:hover  { color: var(--text); }
+.age-chip.active { background: var(--accent); color: #fff; border-color: transparent; }
 
 /* ── Surprise Me FAB ──────────────────────────────────────────────────────── */
 #surprise-fab {
@@ -920,5 +992,34 @@ body.theme-horizon {
 }
 
 @media (max-width: 480px) {
-  .theme-grid { grid-template-columns: 1fr; }
+  .theme-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .quick-filters { gap: 6px; }
+  .qf-btn { padding: 5px 12px; font-size: 12px; }
+  .age-filters { gap: 6px; }
+  .age-chip { padding: 4px 10px; font-size: 11px; }
+}
+
+/* ── Tablet (768 – 1100 px) ───────────────────────────────────────────────── */
+@media (min-width: 701px) and (max-width: 1100px) {
+  #header { padding: 0 24px; gap: 14px; }
+  .header-search { max-width: 260px; margin-left: 14px; }
+  #hero { padding: 0 24px 44px; height: 60vh; min-height: 380px; }
+  .hero-content { max-width: 100%; }
+  #library { padding: 16px 24px 80px; }
+  .media-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .onboarding-card { padding: 32px 28px; }
+  .theme-grid { grid-template-columns: repeat(3, 1fr); }
+  .modal { max-width: 720px; }
+  .modal-backdrop { height: 240px; }
+  .modal-poster { width: 140px; height: 210px; }
+  .modal-title { font-size: 22px; }
+  #settings-panel { width: min(380px, 100%); }
+  /* Make quick-filters scroll horizontally on narrow tablets, with a fade hint */
+  .quick-filters, .age-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+    mask-image: linear-gradient(to right, black 80%, transparent 100%);
+  }
 }
