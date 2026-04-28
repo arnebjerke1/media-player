@@ -1,8 +1,8 @@
 'use strict';
 
-const Database = require('better-sqlite3');
-const path     = require('path');
-const fs       = require('fs');
+const { Database } = require('node-sqlite3-wasm');
+const path         = require('path');
+const fs           = require('fs');
 
 const DATA_DIR   = path.join(__dirname, '..', 'data');
 const DB_PATH    = path.join(DATA_DIR, 'media.db');
@@ -23,8 +23,8 @@ function init() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
   db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS media (
@@ -84,29 +84,31 @@ function saveConfig(updates) {
 
 // ── Media CRUD ─────────────────────────────────────────────────────────────────
 function getAllMedia() {
-  return db.prepare(`
+  return db.all(`
     SELECT m.*, wp.position, wp.duration, wp.completed, wp.last_watched
     FROM   media m
     LEFT JOIN watch_progress wp ON m.id = wp.media_id
     ORDER BY m.title ASC
-  `).all();
+  `);
 }
 
 function getMediaById(id) {
-  return db.prepare(`
+  return db.get(`
     SELECT m.*, wp.position, wp.duration, wp.completed, wp.last_watched
     FROM   media m
     LEFT JOIN watch_progress wp ON m.id = wp.media_id
     WHERE  m.id = ?
-  `).get(id);
+  `, [id]);
 }
 
 function getMediaByPath(filePath) {
-  return db.prepare('SELECT id FROM media WHERE path = ?').get(filePath);
+  return db.get('SELECT id FROM media WHERE path = ?', [filePath]);
 }
 
 function saveMedia(item) {
-  return db.prepare(`
+  // node-sqlite3-wasm requires named-parameter objects to have the '@' prefix on each key
+  const params = Object.fromEntries(Object.entries(item).map(([k, v]) => ['@' + k, v]));
+  return db.run(`
     INSERT OR REPLACE INTO media
       (path, filename, title, year, tmdb_id, imdb_id, overview, tagline,
        poster_path, backdrop_path, genres, rating, rt_score, runtime,
@@ -119,7 +121,7 @@ function saveMedia(item) {
        @language, @cast, @director, @subtitles,
        @quality, @hdr, @dolbyVision, @atmos,
        unixepoch(), unixepoch())
-  `).run(item);
+  `, params);
 }
 
 function updateMedia(id, u) {
@@ -134,32 +136,32 @@ function updateMedia(id, u) {
   if (!fields.length) return;
   const set  = fields.map(([k]) => `${k} = ?`).join(', ');
   const vals = fields.map(([, v]) => v);
-  db.prepare(`UPDATE media SET ${set}, last_updated = unixepoch() WHERE id = ?`).run(...vals, id);
+  db.run(`UPDATE media SET ${set}, last_updated = unixepoch() WHERE id = ?`, [...vals, id]);
 }
 
 function toggleFavorite(id) {
-  db.prepare('UPDATE media SET favorite = 1 - favorite WHERE id = ?').run(id);
-  return db.prepare('SELECT favorite FROM media WHERE id = ?').get(id)?.favorite;
+  db.run('UPDATE media SET favorite = 1 - favorite WHERE id = ?', [id]);
+  return db.get('SELECT favorite FROM media WHERE id = ?', [id])?.favorite;
 }
 
 function toggleWatchlist(id) {
-  db.prepare('UPDATE media SET watchlisted = 1 - watchlisted WHERE id = ?').run(id);
-  return db.prepare('SELECT watchlisted FROM media WHERE id = ?').get(id)?.watchlisted;
+  db.run('UPDATE media SET watchlisted = 1 - watchlisted WHERE id = ?', [id]);
+  return db.get('SELECT watchlisted FROM media WHERE id = ?', [id])?.watchlisted;
 }
 
 function getStats() {
-  const total      = db.prepare('SELECT COUNT(*) AS n FROM media').get().n;
-  const watched    = db.prepare('SELECT COUNT(*) AS n FROM watch_progress WHERE completed = 1').get().n;
-  const inProgress = db.prepare('SELECT COUNT(*) AS n FROM watch_progress WHERE completed = 0 AND position > 30').get().n;
-  const favorites  = db.prepare('SELECT COUNT(*) AS n FROM media WHERE favorite = 1').get().n;
+  const total      = db.get('SELECT COUNT(*) AS n FROM media').n;
+  const watched    = db.get('SELECT COUNT(*) AS n FROM watch_progress WHERE completed = 1').n;
+  const inProgress = db.get('SELECT COUNT(*) AS n FROM watch_progress WHERE completed = 0 AND position > 30').n;
+  const favorites  = db.get('SELECT COUNT(*) AS n FROM media WHERE favorite = 1').n;
 
   // Aggregate hours from runtime (minutes)
-  const hours = db.prepare(
+  const hours = db.get(
     'SELECT SUM(m.runtime) AS mins FROM media m INNER JOIN watch_progress wp ON m.id = wp.media_id WHERE wp.completed = 1'
-  ).get().mins || 0;
+  ).mins || 0;
 
   // Genre breakdown (top 5)
-  const genreRows = db.prepare('SELECT genres FROM media WHERE genres IS NOT NULL').all();
+  const genreRows = db.all('SELECT genres FROM media WHERE genres IS NOT NULL');
   const genreMap  = {};
   for (const row of genreRows) {
     for (const g of JSON.parse(row.genres)) {
@@ -188,17 +190,17 @@ function getSurprise({ maxRuntime, minRating, genre } = {}) {
   if (minRating)  { sql += ' AND (m.rating  IS NULL OR m.rating  >= ?)'; params.push(minRating); }
   if (genre)      { sql += ' AND m.genres LIKE ?'; params.push(`%${genre}%`); }
   sql += ' ORDER BY RANDOM() LIMIT 1';
-  return db.prepare(sql).get(...params) || null;
+  return db.get(sql, params) || null;
 }
 
 function deleteMedia(id) {
-  db.prepare('DELETE FROM media WHERE id = ?').run(id);
+  db.run('DELETE FROM media WHERE id = ?', [id]);
 }
 
 // ── Watch Progress ─────────────────────────────────────────────────────────────
 function saveProgress(mediaId, position, duration) {
   const completed = duration > 0 && position / duration >= 0.9 ? 1 : 0;
-  db.prepare(`
+  db.run(`
     INSERT INTO watch_progress (media_id, position, duration, completed, last_watched)
     VALUES (?, ?, ?, ?, unixepoch())
     ON CONFLICT(media_id) DO UPDATE SET
@@ -206,18 +208,18 @@ function saveProgress(mediaId, position, duration) {
       duration     = excluded.duration,
       completed    = excluded.completed,
       last_watched = excluded.last_watched
-  `).run(mediaId, position, duration, completed);
+  `, [mediaId, position, duration, completed]);
 }
 
 function getContinueWatching() {
-  return db.prepare(`
+  return db.all(`
     SELECT m.*, wp.position, wp.duration, wp.completed, wp.last_watched
     FROM   media m
     INNER JOIN watch_progress wp ON m.id = wp.media_id
     WHERE  wp.completed = 0 AND wp.position > 30
     ORDER BY wp.last_watched DESC
     LIMIT 20
-  `).all();
+  `);
 }
 
 module.exports = {
