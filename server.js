@@ -87,6 +87,7 @@ app.post('/api/media/:id/refresh', async (req, res) => {
     language:     meta.language,
     cast:         meta.cast      ? JSON.stringify(meta.cast)      : null,
     director:     meta.director,
+    certification: meta.certification || null,
   });
 
   res.json(parseMedia(db.getMediaById(item.id)));
@@ -130,28 +131,29 @@ app.post('/api/scan', async (req, res) => {
       }
 
       db.saveMedia({
-        path:         filePath,
+        path:          filePath,
         filename,
-        title:        meta?.title        || parsed.title,
-        year:         meta?.year         || parsed.year  || null,
-        tmdbId:       meta?.tmdbId       || null,
-        imdbId:       meta?.imdbId       || null,
-        overview:     meta?.overview     || null,
-        tagline:      meta?.tagline      || null,
-        posterPath:   meta?.posterPath   || null,
-        backdropPath: meta?.backdropPath || null,
-        genres:       meta?.genres       ? JSON.stringify(meta.genres)    : null,
-        rating:       meta?.rating       || null,
-        rtScore:      meta?.rtScore      || null,
-        runtime:      meta?.runtime      || null,
-        language:     meta?.language     || null,
-        cast:         meta?.cast         ? JSON.stringify(meta.cast)      : null,
-        director:     meta?.director     || null,
-        quality:      quality.quality      || null,
-        hdr:          quality.hdr          ? 1 : 0,
-        dolbyVision:  quality.dolbyVision  ? 1 : 0,
-        atmos:        quality.atmos        ? 1 : 0,
-        subtitles:    subs.length          ? JSON.stringify(subs) : null,
+        title:         meta?.title        || parsed.title,
+        year:          meta?.year         || parsed.year  || null,
+        tmdbId:        meta?.tmdbId       || null,
+        imdbId:        meta?.imdbId       || null,
+        overview:      meta?.overview     || null,
+        tagline:       meta?.tagline      || null,
+        posterPath:    meta?.posterPath   || null,
+        backdropPath:  meta?.backdropPath || null,
+        genres:        meta?.genres       ? JSON.stringify(meta.genres)    : null,
+        rating:        meta?.rating       || null,
+        rtScore:       meta?.rtScore      || null,
+        runtime:       meta?.runtime      || null,
+        language:      meta?.language     || null,
+        cast:          meta?.cast         ? JSON.stringify(meta.cast)      : null,
+        director:      meta?.director     || null,
+        certification: meta?.certification || null,
+        quality:       quality.quality      || null,
+        hdr:           quality.hdr          ? 1 : 0,
+        dolbyVision:   quality.dolbyVision  ? 1 : 0,
+        atmos:         quality.atmos        ? 1 : 0,
+        subtitles:     subs.length          ? JSON.stringify(subs) : null,
       });
 
       scanState.processed++;
