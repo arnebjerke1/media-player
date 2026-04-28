@@ -630,7 +630,7 @@ a{color:#e50914;text-decoration:none}img{display:block}
 <body>
 
 <!-- ── SPLASH SCREEN ─────────────────────────────────────────────────────── -->
-<div id="splash">
+<div id="splash" role="status" aria-live="polite" aria-label="Loading Lumière">
   <div class="splash-inner">
     <div class="splash-logo">Lumi<span>ère</span></div>
     <div class="splash-tagline">Your personal cinema</div>
@@ -1046,18 +1046,21 @@ const QUALITY_TAGS_RE = new RegExp(
   '[\\s.\\-_[(]*((?:19|20)\\d{2}|' + QUALITY_TAGS.join('|') + ')[\\s.\\-_\\])]', 'i'
 );
 // TV show pattern: S01E01, s1e1, 1x01, 1X01
-const TV_PATTERN = /[Ss](\d{1,2})[Ee](\d{1,3})|(\d{1,2})[xX](\d{2,3})/;
+const TV_EPISODE_PATTERN = /[Ss](\d{1,2})[Ee](\d{1,3})|(\d{1,2})[xX](\d{2,3})/;
+const DOUBLE_TAP_THRESHOLD_MS = 280;
+const MIN_RESUME_SECONDS = 30;
+const COMPLETION_RATIO = 0.9;
 
 function parseFilename(name) {
   // Remove file extension
   let s = name.replace(/\.[a-z0-9]{2,5}$/i, '');
 
   // Detect TV show pattern first
-  const tvMatch = s.match(TV_PATTERN);
+  const tvMatch = s.match(TV_EPISODE_PATTERN);
   if (tvMatch) {
     const season  = parseInt(tvMatch[1] || tvMatch[3], 10);
     const episode = parseInt(tvMatch[2] || tvMatch[4], 10);
-    const idx = s.search(TV_PATTERN);
+    const idx = s.search(TV_EPISODE_PATTERN);
     let showName = s.slice(0, idx);
     showName = showName.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
     showName = showName.replace(/[-–]+\s*$/, '').trim();
@@ -1338,7 +1341,7 @@ function getFilteredItems() {
       const prog = safeLS(PROGRESS_KEY) || {};
       items = items.filter(m => {
         const p = prog[m.filename];
-        return p && p > 30 && !(m.runtime && p / (m.runtime * 60) >= 0.9);
+        return p && p > MIN_RESUME_SECONDS && !(m.runtime && p / (m.runtime * 60) >= COMPLETION_RATIO);
       });
       break;
     }
@@ -1470,7 +1473,7 @@ function renderContinue() {
   const inProgress = library.filter(m => {
     const p = all[m.filename];
     if (!p || p < 30) return false;
-    if (m.runtime && p / (m.runtime * 60) >= 0.9) return false;
+    if (m.runtime && p / (m.runtime * 60) >= COMPLETION_RATIO) return false;
     return true;
   });
 
@@ -1556,7 +1559,7 @@ function openModal(m) {
 
   // Play button text
   const pos = getProgress(m.filename);
-  const btnText = (pos > 30 && !(m.runtime && pos / (m.runtime * 60) >= 0.9))
+  const btnText = (pos > MIN_RESUME_SECONDS && !(m.runtime && pos / (m.runtime * 60) >= COMPLETION_RATIO))
     ? `▶ Resume (${fmtTime(pos)})` : '▶ Play';
   document.getElementById('modal-play-btn').textContent = btnText;
   document.getElementById('modal-play-btn').onclick = () => playMovie(m);
@@ -1670,7 +1673,7 @@ function startPlayer(m) {
 
   // Restore progress
   const saved = getProgress(m.filename);
-  if (saved > 30 && !(m.runtime && saved / (m.runtime * 60) >= 0.9)) {
+  if (saved > MIN_RESUME_SECONDS && !(m.runtime && saved / (m.runtime * 60) >= COMPLETION_RATIO)) {
     video.addEventListener('loadedmetadata', () => { video.currentTime = saved; }, { once: true });
   }
 
@@ -1736,7 +1739,7 @@ function setupTapZone(zone, onSingleTap, onDoubleTap) {
       tapTimer = setTimeout(() => {
         tapCount = 0;
         onSingleTap();
-      }, 280);
+      }, DOUBLE_TAP_THRESHOLD_MS);
     }
   });
 }
