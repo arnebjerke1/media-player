@@ -150,7 +150,7 @@ function setSubtitle(idx) {
 
 // ── Playback controls ─────────────────────────────────────────────────────────
 btnPlay.addEventListener('click', togglePlay);
-video.addEventListener('click', togglePlay);
+// Note: tap-zone click handling manages video area taps (see Touch gestures section)
 
 function togglePlay() {
   if (video.paused) { video.play(); } else { video.pause(); }
@@ -360,30 +360,51 @@ document.addEventListener('touchstart', showControls, { passive: true });
 document.addEventListener('keydown', showControls);
 
 // ── Touch gestures ────────────────────────────────────────────────────────────
-// Double-tap left/right to skip, centre to play/pause
+// Single tap: toggle controls visibility
+// Double tap left/right: seek ±10s   Double tap center: play/pause
 const tapLeft   = document.getElementById('tap-left');
 const tapCenter = document.getElementById('tap-center');
 const tapRight  = document.getElementById('tap-right');
 const skipLeftInd  = document.getElementById('skip-left-ind');
 const skipRightInd = document.getElementById('skip-right-ind');
 
-function doubleTapSkip(el, ind, secs) {
-  let taps = 0;
-  el.addEventListener('click', () => {
-    taps++;
-    if (taps === 2) {
-      skip(secs);
-      ind.classList.add('show');
-      setTimeout(() => ind.classList.remove('show'), 600);
-      taps = 0;
+function setupTapZone(zone, onSingleTap, onDoubleTap) {
+  let tapCount  = 0;
+  let tapTimer  = null;
+
+  zone.addEventListener('click', () => {
+    tapCount++;
+    clearTimeout(tapTimer);
+
+    if (tapCount >= 2) {
+      tapCount = 0;
+      onDoubleTap();
+    } else {
+      tapTimer = setTimeout(() => {
+        tapCount = 0;
+        onSingleTap();
+      }, 280);
     }
-    setTimeout(() => { taps = 0; }, 300);
   });
 }
 
-doubleTapSkip(tapLeft,  skipLeftInd,  -10);
-doubleTapSkip(tapRight, skipRightInd,  10);
-tapCenter.addEventListener('click', togglePlay);
+// Single tap on any zone: toggle controls
+// Double tap left: seek -10s | double tap right: seek +10s | double tap center: play/pause
+setupTapZone(
+  tapLeft,
+  () => { controls.classList.contains('hidden') ? showControls() : hideControls(); },
+  () => { skip(-10); skipLeftInd.classList.add('show'); setTimeout(() => skipLeftInd.classList.remove('show'), 600); }
+);
+setupTapZone(
+  tapCenter,
+  () => { controls.classList.contains('hidden') ? showControls() : hideControls(); },
+  togglePlay
+);
+setupTapZone(
+  tapRight,
+  () => { controls.classList.contains('hidden') ? showControls() : hideControls(); },
+  () => { skip(10); skipRightInd.classList.add('show'); setTimeout(() => skipRightInd.classList.remove('show'), 600); }
+);
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {

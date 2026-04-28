@@ -1,5 +1,8 @@
 'use strict';
 
+// TV show episode pattern: Show.Name.S01E02.Episode.Title or S01E02E03 etc.
+const TV_RE = /^(.*?)\s*[Ss](\d{1,2})[Ee](\d{1,2})/;
+
 // Tags that reliably mark the end of a meaningful title in torrent-style filenames
 const CUTOFF_RE =
   /\b(19[0-9]{2}|20[0-2][0-9]|2160p|1080p|1080i|720p|720i|480p|480i|4k|uhd|fhd|bluray|blu-ray|bdrip|brrip|webrip|web-dl|webdl|web|hdtv|dvdrip|dvdscr|hdrip|dvd|x264|x265|h264|h265|hevc|xvid|divx|avc|vp9|av1|aac|ac3|dts|truehd|atmos|flac|mp3|hdr|hdr10|dolby|dolbyvision|dv|hlg|extended|theatrical|unrated|remastered|proper)\b/i;
@@ -84,4 +87,25 @@ function detectQuality(filename) {
   return { quality, hdr, dolbyVision, atmos };
 }
 
-module.exports = { parseFilename, detectQuality };
+/**
+ * Detect if a filename belongs to a TV show episode.
+ * Returns { showName, season, episode } or null if not a TV show.
+ *
+ * Examples:
+ *   "Breaking.Bad.S01E01.Pilot.mkv"  → { showName: "Breaking Bad", season: 1, episode: 1 }
+ *   "Game.of.Thrones.s03e09.720p.mkv" → { showName: "Game of Thrones", season: 3, episode: 9 }
+ */
+function parseTvFilename(filename) {
+  const name = filename.replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[._]/g, ' ');
+  const match = name.match(TV_RE);
+  if (!match) return null;
+  const rawShow = match[1].trim().replace(/[-\s]+$/, '').trim();
+  if (!rawShow) return null;
+  return {
+    showName: toTitleCase(rawShow),
+    season:   parseInt(match[2], 10),
+    episode:  parseInt(match[3], 10),
+  };
+}
+
+module.exports = { parseFilename, parseTvFilename, detectQuality };
