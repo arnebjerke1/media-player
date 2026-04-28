@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   CinemaBox — Main App Logic
+   Lumière — Main App Logic
 ───────────────────────────────────────────────────────────────────────────── */
 'use strict';
 
@@ -366,7 +366,7 @@ function renderHeroItem(m) {
   const buttons  = document.getElementById('hero-buttons');
 
   if (!m) {
-    title.textContent   = 'Welcome to CinemaBox';
+    title.textContent   = 'Welcome to Lumière';
     overview.textContent = 'Add your movie folder in Settings to get started.';
     genres.innerHTML = meta.innerHTML = buttons.innerHTML = '';
     backdrop.style.backgroundImage = '';
@@ -567,7 +567,7 @@ async function refreshMetadata(id) {
 }
 
 async function removeMedia(id) {
-  if (!confirm('Remove this movie from CinemaBox? (The file will not be deleted.)')) return;
+  if (!confirm('Remove this movie from Lumière? (The file will not be deleted.)')) return;
   closeModal();
   await api(`/api/media/${id}`, { method: 'DELETE' });
   allMedia = allMedia.filter(m => m.id !== id);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#141414" />
-  <title>CinemaBox</title>
+  <title>Lumière</title>
   <link rel="stylesheet" href="/css/app.css" />
 </head>
 <body class="theme-spotlight">
@@ -12,13 +12,13 @@
 <!-- ── Loading ─────────────────────────────────────────────────────────── -->
 <div id="loading-overlay">
   <div class="spinner"></div>
-  <span style="color:var(--text3);font-size:14px">Loading CinemaBox…</span>
+  <span style="color:var(--text3);font-size:14px">Loading Lumière…</span>
 </div>
 
 <!-- ── Onboarding ──────────────────────────────────────────────────────── -->
 <div id="onboarding" class="hidden">
   <div class="onboarding-card">
-    <div class="onboarding-logo">Cinema<span>Box</span></div>
+    <div class="onboarding-logo">Lumi<span>ère</span></div>
     <p style="color:var(--text3);font-size:13px;margin-bottom:0">Your personal local media library</p>
 
     <div class="onboarding-steps">
@@ -66,7 +66,7 @@
     <!-- Step 1: Media Folders -->
     <div class="ob-step" id="ob-step-1">
       <h2>Add your media folder</h2>
-      <p>Enter the full path to your movies folder. CinemaBox will scan it for video files and automatically look up artwork and info for each film.</p>
+      <p>Enter the full path to your movies folder. Lumière will scan it for video files and automatically look up artwork and info for each film.</p>
 
       <div class="ob-input-group">
         <label>Folder path</label>
@@ -87,7 +87,7 @@
     <!-- Step 2: API Keys -->
     <div class="ob-step" id="ob-step-2">
       <h2>Set up metadata (optional)</h2>
-      <p>CinemaBox fetches posters, descriptions and ratings automatically. Add free API keys below to enable this — or skip for now and add them later in Settings.</p>
+      <p>Lumière fetches posters, descriptions and ratings automatically. Add free API keys below to enable this — or skip for now and add them later in Settings.</p>
 
       <div class="ob-input-group">
         <label>TMDB API Key <span style="color:var(--text3)">(posters, descriptions, IMDb rating)</span></label>
@@ -120,7 +120,7 @@
 
   <!-- Header -->
   <header id="header">
-    <div class="header-logo">Cinema<span>Box</span></div>
+    <div class="header-logo">Lumi<span>ère</span></div>
     <div class="header-search">
       <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input id="search-input" type="text" placeholder="Search movies…" autocomplete="off" />
@@ -141,7 +141,7 @@
     <div class="hero-backdrop" id="hero-backdrop"></div>
     <div class="hero-content" id="hero-content">
       <div class="hero-genres" id="hero-genres"></div>
-      <h1 class="hero-title"  id="hero-title">Welcome to CinemaBox</h1>
+      <h1 class="hero-title"  id="hero-title">Welcome to Lumière</h1>
       <div class="hero-meta"  id="hero-meta"></div>
       <p class="hero-overview" id="hero-overview">Add your movie folder to get started.</p>
       <div class="hero-buttons" id="hero-buttons"></div>
@@ -225,7 +225,7 @@
 <div id="surprise-modal">
   <div class="surprise-card">
     <h2>🎲 Surprise Me</h2>
-    <p>Tell CinemaBox what you're in the mood for and it'll pick the perfect unwatched movie.</p>
+    <p>Tell Lumière what you're in the mood for and it'll pick the perfect unwatched movie.</p>
 
     <div class="surprise-filters">
       <div class="surprise-row">

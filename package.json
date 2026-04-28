@@ -1,7 +1,7 @@
 {
-  "name": "cinemabox",
+  "name": "lumiere",
   "version": "1.0.0",
-  "description": "A local Netflix-like media player — beautiful posters, ratings, subtitles and more",
+  "description": "Lumière — a local Netflix-like media player with beautiful posters, ratings, subtitles and more",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -292,5 +292,5 @@ app.get('*', (_req, res) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🎬  CinemaBox  →  http://localhost:${PORT}\n`);
+  console.log(`\n🎬  Lumière  →  http://localhost:${PORT}\n`);
 });

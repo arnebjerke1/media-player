@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   CinemaBox — Video Player Logic
+   Lumière — Video Player Logic
    Features: custom controls · subtitles · resume · progress save ·
              keyboard shortcuts · touch gestures · PiP · sleep timer ·
              Media Session API · speed control
@@ -59,8 +59,8 @@ async function init() {
     return;
   }
 
-  titleEl.textContent = mediaInfo.title || 'CinemaBox';
-  document.title      = `${mediaInfo.title || 'Movie'} — CinemaBox`;
+  titleEl.textContent = mediaInfo.title || 'Lumière';
+  document.title      = `${mediaInfo.title || 'Movie'} — Lumière`;
 
   // Apply accent from config (read via CSS var stored on :root if set)
   const savedTheme = localStorage.getItem('cb-theme') || 'spotlight';
