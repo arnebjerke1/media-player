@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lumière</string>
+    <string name="title_activity_main">Lumière</string>
+    <string name="package_name">com.lumiere.player</string>
+    <string name="custom_url_scheme">com.lumiere.player</string>
+</resources>

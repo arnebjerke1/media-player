@@ -1,0 +1,18 @@
+{
+  "appId": "com.lumiere.player",
+  "appName": "Lumière",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0f0f0f"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#0f0f0f",
+      "androidSpinnerStyle": "small",
+      "spinnerColor": "#e50914",
+      "showSpinner": false
+    }
+  }
+}

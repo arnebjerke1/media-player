@@ -69,6 +69,38 @@ The first time you open it, the onboarding wizard will walk you through:
 
 ---
 
+## Android APK
+
+Lumière can be installed as a native Android app — no Play Store required.
+
+### Download
+
+1. Go to the **[Actions tab](../../actions/workflows/build-apk.yml)** of this repository
+2. Open the latest successful **Build Android APK** run
+3. Download the **lumiere-player-debug** artifact
+4. Unzip it — you'll find `app-debug.apk` inside
+
+When a version tag (`v*`) is pushed, the APK is also attached directly to the **[Releases](../../releases)** page.
+
+### Install on your Android device
+
+1. Copy the downloaded `app-debug.apk` to your device (USB, email, cloud drive, etc.)
+2. Open **Settings → Security** (or **Biometrics & Security**) on your device
+   - Enable **Install unknown apps** for whatever app you'll open the APK with (e.g. *Files*, *Chrome*)
+3. Tap the APK file in your file manager and choose **Install**
+4. Launch **Lumière** from your home screen
+
+### First use
+
+1. Tap **Select Videos** on the setup screen
+2. Use the file picker to select the video files you want to watch
+3. *(Optional)* Enter your TMDB / OMDB API keys to get automatic posters and metadata
+4. Tap **Done** — your library appears and you can start watching
+
+> **Supported formats on Android:** MP4 · WebM · 3GP (natively). MKV/AVI/MOV playback depends on your device's codec support. MP4 (H.264) works on all Android devices.
+
+---
+
 ## Using Lumière on a Samsung Tablet (or any phone/tablet)
 
 Lumière runs as a local web server — any device on the same Wi-Fi network can access it through a browser.
