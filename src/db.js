@@ -31,7 +31,11 @@ function init() {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       path          TEXT    UNIQUE NOT NULL,
       filename      TEXT    NOT NULL,
+      media_type    TEXT    DEFAULT 'movie',  -- 'movie' or 'tv'
       title         TEXT,
+      show_name     TEXT,
+      season        INTEGER,
+      episode       INTEGER,
       year          INTEGER,
       tmdb_id       INTEGER,
       imdb_id       TEXT,
@@ -67,8 +71,17 @@ function init() {
     );
   `);
 
-  // Migrate existing databases that pre-date the certification column
-  try { db.exec('ALTER TABLE media ADD COLUMN certification TEXT'); } catch (_) {}
+  // Migrate existing databases that pre-date these columns
+  const migrations = [
+    'ALTER TABLE media ADD COLUMN certification TEXT',
+    "ALTER TABLE media ADD COLUMN media_type TEXT DEFAULT 'movie'",
+    'ALTER TABLE media ADD COLUMN show_name TEXT',
+    'ALTER TABLE media ADD COLUMN season INTEGER',
+    'ALTER TABLE media ADD COLUMN episode INTEGER',
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch (_) {}
+  }
 }
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -114,13 +127,15 @@ function saveMedia(item) {
   const params = Object.fromEntries(Object.entries(item).map(([k, v]) => ['@' + k, v]));
   return db.run(`
     INSERT OR REPLACE INTO media
-      (path, filename, title, year, tmdb_id, imdb_id, overview, tagline,
+      (path, filename, media_type, title, show_name, season, episode,
+       year, tmdb_id, imdb_id, overview, tagline,
        poster_path, backdrop_path, genres, rating, rt_score, runtime,
        language, cast, director, subtitles,
        quality, hdr, dolby_vision, atmos, certification,
        added_at, last_updated)
     VALUES
-      (@path, @filename, @title, @year, @tmdbId, @imdbId, @overview, @tagline,
+      (@path, @filename, @mediaType, @title, @showName, @season, @episode,
+       @year, @tmdbId, @imdbId, @overview, @tagline,
        @posterPath, @backdropPath, @genres, @rating, @rtScore, @runtime,
        @language, @cast, @director, @subtitles,
        @quality, @hdr, @dolbyVision, @atmos, @certification,

@@ -16,9 +16,15 @@ let obTheme         = 'spotlight';
 let scanPollTimer   = null;
 let heroIndex       = 0;
 let heroTimer       = null;
+let activeSidebarSection = 'all';
+let currentTvShow   = null;  // when viewing a TV show's seasons
+let currentSeason   = null;
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
+  const splash = document.getElementById('splash');
+  const splashStart = Date.now();
+
   try {
     config = await api('/api/config');
     applyTheme(config.theme || 'spotlight');
@@ -31,7 +37,13 @@ async function boot() {
   } catch (e) {
     showToast('Could not connect to server', 'error');
   } finally {
-    hideLoading();
+    // Show splash for at least 1.4 seconds for the animation to complete
+    const elapsed = Date.now() - splashStart;
+    const minSplash = 1400;
+    setTimeout(() => {
+      splash.classList.add('fade-out');
+      setTimeout(() => { splash.classList.add('gone'); hideLoading(); }, 650);
+    }, Math.max(0, minSplash - elapsed));
   }
 }
 
@@ -40,10 +52,13 @@ async function loadApp() {
   allMedia = await api('/api/media');
   renderLibrary();
   renderContinueWatching();
+  renderTvShows();
+  renderSidebarGenres();
   populateSurpriseGenres();
   loadStats();
   setupSearch();
   setupHeaderScroll();
+  setupSidebar();
 }
 
 // ── API helper ────────────────────────────────────────────────────────────────
@@ -205,7 +220,8 @@ function renderLibrary() {
 }
 
 function getFilteredMedia() {
-  let list = [...allMedia];
+  // Movies grid only shows movies (not TV episodes)
+  let list = allMedia.filter(m => (m.media_type || 'movie') === 'movie');
 
   // Quick filter
   if (activeQF === 'unwatched') {
@@ -281,8 +297,7 @@ async function renderContinueWatching() {
 // ── Movie Card HTML ────────────────────────────────────────────────────────────
 function movieCardHTML(m, isRow = false) {
   const pct       = m.duration > 0 ? Math.round((m.position / m.duration) * 100) : 0;
-  const ratingBadge = m.rating
-    ? `<span class="badge-imdb">★ ${m.rating}</span>` : '';
+  // IMDb rating moved to modal only — only RT score shown on cards
   const rtBadge   = m.rt_score != null
     ? `<span class="badge-rt ${m.rt_score >= 60 ? 'fresh' : 'rotten'}">${m.rt_score >= 60 ? '🍅' : '🤢'} ${m.rt_score}%</span>` : '';
 
@@ -315,7 +330,7 @@ function movieCardHTML(m, isRow = false) {
         <div class="card-info">
           <div class="card-title">${esc(m.title)}</div>
           ${m.year ? `<div class="card-year">${m.year}</div>` : ''}
-          <div class="card-rating-row">${ratingBadge}${rtBadge}</div>
+          <div class="card-rating-row">${rtBadge}</div>
         </div>
       </div>
       ${progress}
@@ -399,7 +414,7 @@ function renderHeroItem(m) {
   if (m.year)    parts.push(`<span>${m.year}</span>`);
   if (m.runtime) parts.push(`<span>${m.runtime} min</span>`);
   if (m.director)parts.push(`<span>Dir. ${esc(m.director)}</span>`);
-  if (m.rating)  parts.push(`<span class="hero-rating-imdb">★ ${m.rating}</span>`);
+  if (m.rating)  parts.push(`<span class="hero-rating-imdb">${m.rating} IMDb</span>`);
   if (m.rt_score != null) {
     const icon = m.rt_score >= 60 ? '🍅' : '🤢';
     parts.push(`<span class="hero-rating-rt">${icon} ${m.rt_score}%</span>`);
@@ -564,7 +579,8 @@ async function openModal(id) {
   document.getElementById('modal-actions').innerHTML = `
     <button class="btn-play-modal" onclick="playMedia(${m.id})">${playLabel}</button>
     <button class="btn-refresh" onclick="refreshMetadata(${m.id})">⟳ Refresh Info</button>
-    <button class="btn-remove"  onclick="removeMedia(${m.id})">🗑 Remove</button>`;
+    <button class="btn-remove"  onclick="removeMedia(${m.id})">🗑 Remove</button>
+    <button class="btn-delete-file" onclick="deleteFile(${m.id})">🗑 Delete File</button>`;
 }
 
 function closeModal() {
@@ -601,7 +617,24 @@ async function removeMedia(id) {
   await api(`/api/media/${id}`, { method: 'DELETE' });
   allMedia = allMedia.filter(m => m.id !== id);
   renderLibrary();
+  renderTvShows();
   showToast('Removed from library', 'success');
+}
+
+async function deleteFile(id) {
+  const m = allMedia.find(x => x.id === id);
+  const title = m?.title || 'this item';
+  if (!confirm(`Permanently delete the file for "${title}" from disk? This cannot be undone.`)) return;
+  closeModal();
+  try {
+    await api(`/api/media/${id}?deleteFile=true`, { method: 'DELETE' });
+    allMedia = allMedia.filter(x => x.id !== id);
+    renderLibrary();
+    renderTvShows();
+    showToast('File deleted from disk', 'success');
+  } catch (e) {
+    showToast('Could not delete file: ' + e.message, 'error');
+  }
 }
 
 // ── Play ──────────────────────────────────────────────────────────────────────
@@ -646,7 +679,9 @@ function startScanPolling() {
       renderContinueWatching();
       populateSurpriseGenres();
       loadStats();
-      showToast(`Scan complete — ${allMedia.length} movies in library`, 'success');
+      renderTvShows();
+      renderSidebarGenres();
+      showToast(`Scan complete — ${allMedia.length} items in library`, 'success');
     }
   }, 1500);
 }
@@ -789,6 +824,209 @@ document.getElementById('btn-surprise-go')?.addEventListener('click', async () =
     showToast('No unwatched movies match those filters. Try fewer restrictions.', 'error');
   }
 });
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function setupSidebar() {
+  document.getElementById('btn-menu')?.addEventListener('click', openSidebar);
+  document.getElementById('sidebar-close')?.addEventListener('click', closeSidebar);
+  document.getElementById('sidebar-overlay')?.addEventListener('click', closeSidebar);
+
+  document.querySelectorAll('.sidebar-item[data-section]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      activeSidebarSection = section;
+
+      // Update active state
+      document.querySelectorAll('.sidebar-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      closeSidebar();
+
+      // Apply as quick filter or switch to TV view
+      if (section === 'tv') {
+        showTvSection();
+      } else {
+        hideTvSection();
+        const qfMap = { all: 'all', continue: 'all', favorites: 'favorites', watchlist: 'watchlist', '4k': '4k' };
+        activeQF = qfMap[section] || 'all';
+        document.querySelectorAll('.qf-btn').forEach(b => b.classList.toggle('active', b.dataset.qf === activeQF));
+        const filtered = getFilteredMedia();
+        renderGrid(filtered);
+        updateAllCount(filtered.length);
+      }
+    });
+  });
+}
+
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+function renderSidebarGenres() {
+  const allGenres = [...new Set(allMedia.flatMap(m => m.genres || []))].sort();
+  const list = document.getElementById('sidebar-genre-list');
+  if (!list) return;
+  list.innerHTML = allGenres.map(g => `
+    <button class="sidebar-genre-btn" data-genre="${esc(g)}">${esc(g)}</button>
+  `).join('');
+
+  list.querySelectorAll('.sidebar-genre-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeSidebar();
+      hideTvSection();
+      activeGenre = btn.dataset.genre;
+      // clear active on all genre btns then set this one
+      list.querySelectorAll('.sidebar-genre-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // also deactivate quick filters
+      document.querySelectorAll('.filter-chip').forEach(c => {
+        c.classList.toggle('active', c.dataset.genre === activeGenre);
+      });
+      const filtered = getFilteredMedia();
+      renderGrid(filtered);
+      updateAllCount(filtered.length);
+    });
+  });
+}
+
+// ── TV Shows ──────────────────────────────────────────────────────────────────
+function showTvSection() {
+  document.getElementById('tv-section').style.display = '';
+  document.getElementById('all-movies-section').style.display = 'none';
+}
+
+function hideTvSection() {
+  document.getElementById('tv-section').style.display = 'none';
+  document.getElementById('all-movies-section').style.display = '';
+}
+
+function renderTvShows() {
+  const tvItems = allMedia.filter(m => m.media_type === 'tv');
+  const tvSec   = document.getElementById('tv-section');
+
+  if (!tvItems.length) {
+    tvSec.style.display = 'none';
+    return;
+  }
+
+  // Group by show_name
+  const shows = {};
+  for (const ep of tvItems) {
+    const name = ep.show_name || ep.title;
+    if (!shows[name]) {
+      shows[name] = { name, items: [], poster_path: ep.poster_path, backdrop_path: ep.backdrop_path };
+    }
+    shows[name].items.push(ep);
+    // Prefer item that has a poster
+    if (!shows[name].poster_path && ep.poster_path) shows[name].poster_path = ep.poster_path;
+  }
+
+  const showList = Object.values(shows);
+  document.getElementById('tv-count').textContent = `${showList.length} show${showList.length !== 1 ? 's' : ''}`;
+
+  const grid = document.getElementById('tv-shows-grid');
+  grid.innerHTML = showList.map(show => {
+    const seasons = [...new Set(show.items.map(e => e.season).filter(Boolean))];
+    const epCount = show.items.length;
+    const seasonTxt = seasons.length ? `${seasons.length} season${seasons.length !== 1 ? 's' : ''}` : '';
+    const epTxt = `${epCount} episode${epCount !== 1 ? 's' : ''}`;
+    const poster = show.poster_path
+      ? `<img class="tv-show-poster" src="${esc(show.poster_path)}" alt="${esc(show.name)}" loading="lazy" />`
+      : `<div class="tv-show-poster-placeholder"><span style="font-size:32px">📺</span><span>${esc(show.name)}</span></div>`;
+    return `
+      <div class="tv-show-card" data-show="${esc(show.name)}">
+        ${poster}
+        <div class="tv-show-info">
+          <div class="tv-show-name">${esc(show.name)}</div>
+          <div class="tv-show-meta">${[seasonTxt, epTxt].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.tv-show-card').forEach(card => {
+    card.addEventListener('click', () => openTvShow(card.dataset.show));
+  });
+}
+
+function openTvShow(showName) {
+  currentTvShow = showName;
+  const items = allMedia.filter(m => (m.show_name || m.title) === showName && m.media_type === 'tv');
+  const seasons = [...new Set(items.map(e => e.season).filter(s => s != null))].sort((a, b) => a - b);
+
+  currentSeason = seasons[0] || null;
+
+  const tvSec = document.getElementById('tv-section');
+  tvSec.innerHTML = `
+    <div class="tv-season-header">
+      <button class="tv-back-btn" id="tv-back-btn">← All Shows</button>
+      <span class="section-title">${esc(showName)}</span>
+    </div>
+    ${seasons.length > 1 ? `
+    <div class="season-tabs" id="season-tabs">
+      ${seasons.map(s => `<button class="season-tab${s === currentSeason ? ' active' : ''}" data-season="${s}">Season ${s}</button>`).join('')}
+    </div>` : ''}
+    <div class="episode-list" id="episode-list"></div>`;
+
+  document.getElementById('tv-back-btn').addEventListener('click', () => {
+    tvSec.innerHTML = '<div class="section-header"><span class="section-title">TV Shows</span><span class="section-count" id="tv-count"></span></div><div id="tv-shows-grid" class="tv-shows-grid"></div>';
+    renderTvShows();
+  });
+
+  document.querySelectorAll('.season-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      currentSeason = parseInt(tab.dataset.season, 10);
+      document.querySelectorAll('.season-tab').forEach(t => t.classList.toggle('active', t === tab));
+      renderEpisodeList(items, currentSeason);
+    });
+  });
+
+  renderEpisodeList(items, currentSeason);
+}
+
+function renderEpisodeList(items, season) {
+  const episodes = items
+    .filter(e => season == null || e.season === season)
+    .sort((a, b) => (a.episode || 0) - (b.episode || 0));
+
+  const list = document.getElementById('episode-list');
+  if (!list) return;
+
+  list.innerHTML = episodes.map(ep => {
+    const pct = ep.duration > 0 ? Math.round((ep.position / ep.duration) * 100) : 0;
+    const epNum = ep.episode != null ? ep.episode : '?';
+    const progress = pct > 0 && pct < 95
+      ? `<div class="episode-progress"><div class="episode-progress-bar" style="width:${pct}%"></div></div>` : '';
+    return `
+      <div class="episode-card" data-id="${ep.id}">
+        <div class="episode-num">${epNum}</div>
+        <div class="episode-info">
+          <div class="episode-title">${esc(ep.title)}</div>
+          ${progress}
+        </div>
+        <button class="episode-play-btn" data-id="${ep.id}" title="Play">▶</button>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.episode-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.episode-play-btn')) return;
+      openModal(parseInt(card.dataset.id, 10));
+    });
+  });
+  list.querySelectorAll('.episode-play-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      playMedia(parseInt(btn.dataset.id, 10));
+    });
+  });
+}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function esc(str) {

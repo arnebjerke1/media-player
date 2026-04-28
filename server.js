@@ -8,8 +8,8 @@ const fs      = require('fs');
 
 const db                        = require('./src/db');
 const { scanDirectory, findSubtitles } = require('./src/scanner');
-const { fetchMetadata }         = require('./src/metadata');
-const { parseFilename, detectQuality }  = require('./src/parser');
+const { fetchMetadata, fetchTvMetadata }         = require('./src/metadata');
+const { parseFilename, parseTvFilename, detectQuality }  = require('./src/parser');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +30,7 @@ function parseMedia(item) {
     genres:    item.genres    ? JSON.parse(item.genres)    : [],
     cast:      item.cast      ? JSON.parse(item.cast)      : [],
     subtitles: item.subtitles ? JSON.parse(item.subtitles) : [],
+    media_type: item.media_type || 'movie',
   };
 }
 
@@ -56,7 +57,29 @@ app.get('/api/media/:id', (req, res) => {
 });
 
 app.delete('/api/media/:id', (req, res) => {
-  db.deleteMedia(parseInt(req.params.id, 10));
+  const deleteFile = req.query.deleteFile === 'true';
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+  const item = db.getMediaById(id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+
+  if (deleteFile) {
+    // Resolve and validate the path to prevent directory traversal
+    const resolved = item.path ? path.resolve(item.path) : null;
+    if (resolved && !resolved.startsWith(path.sep) && !resolved.match(/^[A-Za-z]:\\/)) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    if (resolved && fs.existsSync(resolved)) {
+      try {
+        fs.unlinkSync(resolved);
+      } catch (err) {
+        return res.status(500).json({ error: `Could not delete file: ${err.message}` });
+      }
+    }
+  }
+
+  db.deleteMedia(id);
   res.json({ success: true });
 });
 
@@ -96,21 +119,19 @@ app.post('/api/media/:id/refresh', async (req, res) => {
 // ── Scan API ───────────────────────────────────────────────────────────────────
 let scanState = { inProgress: false, total: 0, processed: 0, current: '', errors: [] };
 
-app.post('/api/scan', async (req, res) => {
-  if (scanState.inProgress) return res.json({ message: 'Scan already running', ...scanState });
-
+/** Core scan logic — shared by HTTP endpoint and startup auto-scan. */
+async function runScan() {
   const config = db.getConfig();
-  if (!config.mediaFolders?.length) {
-    return res.status(400).json({ error: 'No media folders configured' });
-  }
-
-  res.json({ message: 'Scan started' });
+  if (!config.mediaFolders?.length) return;
 
   scanState = { inProgress: true, total: 0, processed: 0, current: '', errors: [] };
 
   try {
     const files = config.mediaFolders.flatMap(f => scanDirectory(f));
     scanState.total = files.length;
+
+    // Cache TV show metadata so we only fetch once per show
+    const tvMetaCache = {};
 
     for (const filePath of files) {
       scanState.current = path.basename(filePath);
@@ -121,20 +142,52 @@ app.post('/api/scan', async (req, res) => {
       }
 
       const filename = path.basename(filePath);
-      const parsed   = parseFilename(filename);
+      const tvParsed = parseTvFilename(filename);
       const quality  = detectQuality(filename);
       const subs     = findSubtitles(filePath);
 
-      let meta = null;
-      if (config.tmdbApiKey) {
-        meta = await fetchMetadata(parsed.title, parsed.year, config.tmdbApiKey, config.omdbApiKey);
+      let meta      = null;
+      let mediaType = 'movie';
+      let showName  = null;
+      let season    = null;
+      let episode   = null;
+
+      if (tvParsed) {
+        // TV show episode
+        mediaType = 'tv';
+        showName  = tvParsed.showName;
+        season    = tvParsed.season;
+        episode   = tvParsed.episode;
+
+        if (config.tmdbApiKey) {
+          // Use cached TV show metadata
+          if (!tvMetaCache[showName]) {
+            tvMetaCache[showName] = await fetchTvMetadata(showName, config.tmdbApiKey, config.omdbApiKey);
+          }
+          meta = tvMetaCache[showName];
+        }
+      } else {
+        // Regular movie
+        const parsed = parseFilename(filename);
+        if (config.tmdbApiKey) {
+          meta = await fetchMetadata(parsed.title, parsed.year, config.tmdbApiKey, config.omdbApiKey);
+        }
+        if (!meta) {
+          meta = { title: parsed.title, year: parsed.year };
+        }
       }
 
       db.saveMedia({
         path:          filePath,
         filename,
-        title:         meta?.title        || parsed.title,
-        year:          meta?.year         || parsed.year  || null,
+        mediaType,
+        showName:      showName  || null,
+        season:        season    || null,
+        episode:       episode   || null,
+        title:         tvParsed
+                         ? (meta?.title ? `${meta.title} S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}` : filename)
+                         : (meta?.title || parseFilename(filename).title),
+        year:          meta?.year         || null,
         tmdbId:        meta?.tmdbId       || null,
         imdbId:        meta?.imdbId       || null,
         overview:      meta?.overview     || null,
@@ -164,6 +217,18 @@ app.post('/api/scan', async (req, res) => {
   } finally {
     scanState.inProgress = false;
   }
+}
+
+app.post('/api/scan', async (req, res) => {
+  if (scanState.inProgress) return res.json({ message: 'Scan already running', ...scanState });
+
+  const config = db.getConfig();
+  if (!config.mediaFolders?.length) {
+    return res.status(400).json({ error: 'No media folders configured' });
+  }
+
+  res.json({ message: 'Scan started' });
+  runScan().catch(err => console.error('[scan]', err));
 });
 
 app.get('/api/scan/progress', (_req, res) => {
@@ -295,4 +360,11 @@ app.get('*', (_req, res) => {
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🎬  Lumière  →  http://localhost:${PORT}\n`);
+
+  // Auto-scan on startup: quietly pick up any new files in configured folders
+  const cfg = db.getConfig();
+  if (cfg.setupComplete && cfg.mediaFolders?.length) {
+    console.log('[startup] Auto-scanning media folders for new files…');
+    runScan().catch(err => console.error('[startup scan]', err));
+  }
 });
