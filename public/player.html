@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CinemaBox Player</title>
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #fff; }
+    button { cursor: pointer; border: none; outline: none; background: none; color: inherit; }
+
+    /* ── Video ─────────────────────────────────────────────────────────── */
+    #video-wrap {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: #000;
+    }
+    #video {
+      width: 100%; height: 100%;
+      object-fit: contain;
+    }
+
+    /* ── Controls overlay ──────────────────────────────────────────────── */
+    #controls {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column;
+      justify-content: space-between;
+      transition: opacity .3s;
+    }
+    #controls.hidden { opacity: 0; pointer-events: none; }
+
+    /* Top bar */
+    #ctrl-top {
+      background: linear-gradient(to bottom, rgba(0,0,0,.75) 0%, transparent 100%);
+      padding: 16px 24px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .back-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 6px;
+      background: rgba(255,255,255,.12);
+      backdrop-filter: blur(8px);
+      font-size: 14px; font-weight: 600;
+      transition: background .15s;
+    }
+    .back-btn:hover { background: rgba(255,255,255,.22); }
+    #movie-title-top {
+      font-size: 16px; font-weight: 700;
+      opacity: .9;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex: 1;
+    }
+
+    /* Centre tap zones */
+    #ctrl-mid {
+      flex: 1; display: flex;
+    }
+    .tap-zone {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .skip-indicator {
+      font-size: 36px; opacity: 0;
+      transition: opacity .15s;
+      pointer-events: none;
+      text-shadow: 0 2px 8px rgba(0,0,0,.8);
+    }
+    .skip-indicator.show { opacity: 1; }
+
+    /* Centre play/pause indicator */
+    #play-indicator {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 64px;
+      opacity: 0;
+      pointer-events: none;
+      text-shadow: 0 4px 16px rgba(0,0,0,.8);
+      transition: opacity .2s;
+    }
+    #play-indicator.flash { opacity: 1; }
+
+    /* Bottom bar */
+    #ctrl-bottom {
+      background: linear-gradient(to top, rgba(0,0,0,.85) 0%, transparent 100%);
+      padding: 16px 24px 20px;
+    }
+
+    /* Progress / seek bar */
+    .seek-wrap {
+      position: relative; height: 20px;
+      display: flex; align-items: center;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+    .seek-track {
+      width: 100%; height: 4px;
+      background: rgba(255,255,255,.25);
+      border-radius: 2px;
+      position: relative;
+      transition: height .15s;
+    }
+    .seek-wrap:hover .seek-track { height: 6px; }
+    .seek-buffered {
+      position: absolute; left: 0; top: 0; height: 100%;
+      background: rgba(255,255,255,.3);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .seek-played {
+      position: absolute; left: 0; top: 0; height: 100%;
+      background: var(--accent, #e50914);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+    .seek-thumb {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,.5);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+    }
+    .seek-wrap:hover .seek-thumb { opacity: 1; }
+
+    /* Hover time tooltip */
+    .seek-tooltip {
+      position: absolute; bottom: 24px;
+      background: rgba(0,0,0,.85); color: #fff;
+      font-size: 12px; padding: 3px 7px; border-radius: 4px;
+      pointer-events: none; opacity: 0;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    .seek-wrap:hover .seek-tooltip { opacity: 1; }
+
+    /* Bottom row buttons */
+    .ctrl-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .ctrl-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      font-size: 22px;
+      transition: background .15s, transform .1s;
+    }
+    .ctrl-btn:hover    { background: rgba(255,255,255,.15); }
+    .ctrl-btn:active   { transform: scale(.9); }
+    .ctrl-btn.active   { color: var(--accent, #e50914); }
+    .ctrl-btn-sm { width: 34px; height: 34px; font-size: 16px; }
+    .ctrl-btn-lg { width: 48px; height: 48px; font-size: 28px; }
+
+    /* Skip ±10 */
+    .skip-btn { font-size: 18px; position: relative; }
+    .skip-btn::after {
+      content: attr(data-skip);
+      position: absolute; bottom: -2px;
+      font-size: 9px; font-weight: 700; letter-spacing: .3px;
+      opacity: .7;
+    }
+
+    /* Time display */
+    .time-display {
+      font-size: 13px; font-weight: 500;
+      letter-spacing: .3px;
+      opacity: .85;
+      white-space: nowrap;
+    }
+
+    .ctrl-spacer { flex: 1; }
+
+    /* Volume control */
+    .vol-wrap {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .vol-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 80px; height: 4px;
+      background: rgba(255,255,255,.3);
+      border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%; background: #fff;
+    }
+
+    /* Speed & subtitles panel */
+    .popup-menu {
+      position: absolute; bottom: 70px;
+      background: rgba(18,18,18,.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px;
+      padding: 8px 0;
+      min-width: 140px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.6);
+      z-index: 20;
+    }
+    .popup-menu.right  { right: 0; }
+    .popup-item {
+      padding: 10px 18px; font-size: 14px;
+      display: flex; align-items: center; gap: 8px;
+      cursor: pointer; transition: background .1s;
+    }
+    .popup-item:hover   { background: rgba(255,255,255,.1); }
+    .popup-item.active  { color: var(--accent, #e50914); font-weight: 700; }
+    .popup-divider {
+      height: 1px; background: rgba(255,255,255,.1);
+      margin: 4px 0;
+    }
+    .popup-label {
+      padding: 6px 18px 2px;
+      font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+      color: rgba(255,255,255,.4);
+    }
+
+    /* Sleep timer pill */
+    #sleep-pill {
+      display: none;
+      position: fixed; top: 16px; right: 24px;
+      z-index: 30;
+      background: rgba(0,0,0,.7);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 20px;
+      padding: 6px 14px; font-size: 13px;
+      backdrop-filter: blur(8px);
+    }
+    #sleep-pill.visible { display: flex; align-items: center; gap: 6px; }
+
+    /* Poster overlay when paused */
+    #poster-overlay {
+      position: fixed; inset: 0; z-index: 1;
+      pointer-events: none;
+      display: flex; flex-direction: column; align-items: flex-start;
+      justify-content: flex-end;
+      padding: 40px 48px;
+      background: linear-gradient(to top, rgba(0,0,0,.6) 0%, transparent 50%);
+      opacity: 0; transition: opacity .4s;
+    }
+    #poster-overlay.visible { opacity: 1; }
+
+    /* Subtitles display */
+    #subtitle-display {
+      position: fixed; bottom: 90px; left: 0; right: 0;
+      text-align: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .subtitle-text {
+      display: inline-block;
+      background: rgba(0,0,0,.75);
+      color: #fff;
+      font-size: clamp(16px, 2.5vw, 26px);
+      padding: 4px 12px;
+      border-radius: 4px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    /* Keyboard shortcut hint */
+    #shortcut-hint {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.7); border-radius: 8px; padding: 8px 16px;
+      font-size: 12px; color: rgba(255,255,255,.6);
+      pointer-events: none; opacity: 0;
+      transition: opacity .3s;
+      white-space: nowrap;
+    }
+    #shortcut-hint.show { opacity: 1; }
+
+    /* Loading spinner */
+    #video-loading {
+      position: fixed; inset: 0; z-index: 8;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .vspinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(255,255,255,.15);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: vspin .8s linear infinite;
+    }
+    @keyframes vspin { to { transform: rotate(360deg); } }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .vol-slider { width: 60px; }
+      #ctrl-top { padding: 10px 14px; }
+      #ctrl-bottom { padding: 10px 14px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Video element -->
+<div id="video-wrap">
+  <video id="video" playsinline></video>
+</div>
+
+<!-- Loading spinner (shown while buffering) -->
+<div id="video-loading"><div class="vspinner" id="vspinner" style="display:none"></div></div>
+
+<!-- Subtitle display -->
+<div id="subtitle-display"></div>
+
+<!-- Sleep timer pill -->
+<div id="sleep-pill">⏱ <span id="sleep-countdown"></span></div>
+
+<!-- Paused poster overlay -->
+<div id="poster-overlay"></div>
+
+<!-- Play/pause flash indicator -->
+<div id="play-indicator"></div>
+
+<!-- Controls -->
+<div id="controls">
+
+  <!-- Top -->
+  <div id="ctrl-top">
+    <button class="back-btn" id="btn-back">← Back</button>
+    <span   id="movie-title-top"></span>
+  </div>
+
+  <!-- Middle (tap zones) -->
+  <div id="ctrl-mid">
+    <div class="tap-zone" id="tap-left">
+      <span class="skip-indicator" id="skip-left-ind">⏪ 10s</span>
+    </div>
+    <div class="tap-zone" id="tap-center"></div>
+    <div class="tap-zone" id="tap-right">
+      <span class="skip-indicator" id="skip-right-ind">10s ⏩</span>
+    </div>
+  </div>
+
+  <!-- Bottom -->
+  <div id="ctrl-bottom">
+
+    <!-- Seek bar -->
+    <div class="seek-wrap" id="seek-wrap">
+      <div class="seek-track">
+        <div class="seek-buffered" id="seek-buffered" style="width:0%"></div>
+        <div class="seek-played"   id="seek-played"   style="width:0%"></div>
+        <div class="seek-thumb"    id="seek-thumb"     style="left:0%"></div>
+      </div>
+      <div class="seek-tooltip" id="seek-tooltip">0:00</div>
+    </div>
+
+    <!-- Controls row -->
+    <div class="ctrl-row">
+
+      <!-- Back 10s -->
+      <button class="ctrl-btn skip-btn" id="btn-skip-back" data-skip="-10" title="Back 10s (←)">⏪</button>
+
+      <!-- Play / Pause -->
+      <button class="ctrl-btn ctrl-btn-lg" id="btn-play" title="Play/Pause (Space)">▶</button>
+
+      <!-- Forward 10s -->
+      <button class="ctrl-btn skip-btn" id="btn-skip-fwd" data-skip="+10" title="Forward 10s (→)">⏩</button>
+
+      <!-- Volume -->
+      <div class="vol-wrap">
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-mute" title="Mute (M)">🔊</button>
+        <input  class="vol-slider" id="vol-slider" type="range" min="0" max="1" step="0.02" value="1" />
+      </div>
+
+      <!-- Time -->
+      <span class="time-display" id="time-display">0:00 / 0:00</span>
+
+      <div class="ctrl-spacer"></div>
+
+      <!-- Subtitles -->
+      <div style="position:relative">
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-subs" title="Subtitles (C)">CC</button>
+        <div class="popup-menu right" id="subs-menu" style="display:none"></div>
+      </div>
+
+      <!-- Speed -->
+      <div style="position:relative">
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-speed" title="Speed">1×</button>
+        <div class="popup-menu right" id="speed-menu" style="display:none">
+          <div class="popup-label">Playback speed</div>
+          <div class="popup-item" data-speed="0.5">0.5×</div>
+          <div class="popup-item" data-speed="0.75">0.75×</div>
+          <div class="popup-item active" data-speed="1">1× (normal)</div>
+          <div class="popup-item" data-speed="1.25">1.25×</div>
+          <div class="popup-item" data-speed="1.5">1.5×</div>
+          <div class="popup-item" data-speed="2">2×</div>
+        </div>
+      </div>
+
+      <!-- Sleep timer -->
+      <div style="position:relative">
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-sleep" title="Sleep timer">⏱</button>
+        <div class="popup-menu right" id="sleep-menu" style="display:none">
+          <div class="popup-label">Sleep timer</div>
+          <div class="popup-item" data-sleep="0">Off</div>
+          <div class="popup-item" data-sleep="30">30 minutes</div>
+          <div class="popup-item" data-sleep="60">1 hour</div>
+          <div class="popup-item" data-sleep="90">90 minutes</div>
+          <div class="popup-item" data-sleep="120">2 hours</div>
+        </div>
+      </div>
+
+      <!-- PiP -->
+      <button class="ctrl-btn ctrl-btn-sm" id="btn-pip" title="Picture in Picture">⧉</button>
+
+      <!-- Fullscreen -->
+      <button class="ctrl-btn ctrl-btn-sm" id="btn-fs" title="Fullscreen (F)">⛶</button>
+
+    </div>
+  </div>
+</div>
+
+<div id="shortcut-hint"></div>
+
+<script src="/js/player.js"></script>
+</body>
+</html>
