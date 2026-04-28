@@ -1,0 +1,21 @@
+{
+  "name": "lumiere",
+  "version": "1.0.0",
+  "description": "Lumière — a local Netflix-like media player with beautiful posters, ratings, subtitles and more",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["media", "player", "local", "netflix", "movies"],
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "better-sqlite3": "^9.3.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
