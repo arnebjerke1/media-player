@@ -297,7 +297,7 @@ async function renderContinueWatching() {
 // ── Movie Card HTML ────────────────────────────────────────────────────────────
 function movieCardHTML(m, isRow = false) {
   const pct       = m.duration > 0 ? Math.round((m.position / m.duration) * 100) : 0;
-  // IMDB rating moved to modal only — only RT score shown on cards
+  // IMDb rating moved to modal only — only RT score shown on cards
   const rtBadge   = m.rt_score != null
     ? `<span class="badge-rt ${m.rt_score >= 60 ? 'fresh' : 'rotten'}">${m.rt_score >= 60 ? '🍅' : '🤢'} ${m.rt_score}%</span>` : '';
 

@@ -58,20 +58,28 @@ app.get('/api/media/:id', (req, res) => {
 
 app.delete('/api/media/:id', (req, res) => {
   const deleteFile = req.query.deleteFile === 'true';
-  const item = db.getMediaById(parseInt(req.params.id, 10));
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
+
+  const item = db.getMediaById(id);
   if (!item) return res.status(404).json({ error: 'Not found' });
 
   if (deleteFile) {
-    if (item.path && fs.existsSync(item.path)) {
+    // Resolve and validate the path to prevent directory traversal
+    const resolved = item.path ? path.resolve(item.path) : null;
+    if (resolved && !resolved.startsWith(path.sep) && !resolved.match(/^[A-Za-z]:\\/)) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    if (resolved && fs.existsSync(resolved)) {
       try {
-        fs.unlinkSync(item.path);
+        fs.unlinkSync(resolved);
       } catch (err) {
         return res.status(500).json({ error: `Could not delete file: ${err.message}` });
       }
     }
   }
 
-  db.deleteMedia(parseInt(req.params.id, 10));
+  db.deleteMedia(id);
   res.json({ success: true });
 });
 
@@ -165,9 +173,7 @@ async function runScan() {
           meta = await fetchMetadata(parsed.title, parsed.year, config.tmdbApiKey, config.omdbApiKey);
         }
         if (!meta) {
-          // fallback title/year from filename
-          const parsed2 = parseFilename(filename);
-          meta = { title: parsed2.title, year: parsed2.year };
+          meta = { title: parsed.title, year: parsed.year };
         }
       }
 
