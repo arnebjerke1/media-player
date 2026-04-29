@@ -1164,9 +1164,18 @@ async function autoScanDirectory() {
 
         // Re-attach content URIs to existing library items so they can be played
         // immediately without needing to re-scan first.
+        // Also re-classify any item that was previously stored with the wrong media_type.
         for (const nf of nativeFiles) {
           const item = libMap.get(nf.name);
-          if (item) item.contentUri = nf.uri;
+          if (!item) continue;
+          item.contentUri = nf.uri;
+          const reparsed = parseFilename(nf.name);
+          if (reparsed.isTv && item.media_type !== 'tv') {
+            item.media_type = 'tv';
+            item.show_name  = reparsed.showName;
+            item.season     = reparsed.season;
+            item.episode    = reparsed.episode;
+          }
         }
         // Scan any genuinely new files in the background.
         const newFiles = nativeFiles.filter(nf => !libMap.has(nf.name));
@@ -1431,7 +1440,7 @@ async function scanFiles(files) {
     const { title, year, isTv, showName, season, episode } = parseFilename(file.name);
     if (!title) continue;
 
-    // Check if already in library (same filename) — just refresh file ref
+    // Check if already in library (same filename) — refresh file ref, fix classification, fill missing metadata
     const existing = library.find(m => m.filename === file.name);
     if (existing) {
       if (file.uri) {
@@ -1440,6 +1449,46 @@ async function scanFiles(files) {
         existing.fileRef = file;
       }
       existing.blobUrl = null;
+
+      // Re-classify as TV if the filename now matches the TV pattern but the item was stored as a movie
+      if (isTv && existing.media_type !== 'tv') {
+        existing.media_type = 'tv';
+        existing.show_name  = showName;
+        existing.season     = season;
+        existing.episode    = episode;
+      }
+
+      // Fetch missing poster / metadata from TMDB
+      if (!existing.poster && keys.tmdb) {
+        if (isTv || existing.media_type === 'tv') {
+          const sn = existing.show_name || showName;
+          const se = existing.season   || season;
+          const ep = existing.episode  || episode;
+          if (sn) {
+            const tvResult = await tmdbTvSearch(sn, se, ep).catch(() => null);
+            if (tvResult) {
+              existing.poster       = tvResult.showPoster;
+              existing.backdrop     = tvResult.showBackdrop;
+              existing.backdropFull = tvResult.show?.backdrop_path ? `https://image.tmdb.org/t/p/w1280${tvResult.show.backdrop_path}` : null;
+              if (!existing.overview && tvResult.show?.overview)        existing.overview = tvResult.show.overview;
+              if (!existing.genres?.length && tvResult.show?.genres?.length) existing.genres = (tvResult.show.genres || []).map(g => g.name);
+              if (!existing.year && tvResult.show?.first_air_date)      existing.year = tvResult.show.first_air_date.slice(0, 4);
+            }
+          }
+        } else {
+          const movie = await tmdbSearch(title, year).catch(() => null);
+          if (movie) {
+            existing.poster       = movie.poster_path    ? `https://image.tmdb.org/t/p/w342${movie.poster_path}`    : null;
+            existing.backdrop     = movie.backdrop_path  ? `https://image.tmdb.org/t/p/w780${movie.backdrop_path}`  : null;
+            existing.backdropFull = movie.backdrop_path  ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}` : null;
+            existing.title        = movie.title || existing.title;
+            if (!existing.overview && movie.overview)           existing.overview = movie.overview;
+            if (!existing.genres?.length && movie.genres?.length) existing.genres = (movie.genres || []).map(g => g.name);
+            if (!existing.year && movie.release_date)           existing.year = movie.release_date.slice(0, 4);
+          }
+        }
+      }
+
       continue;
     }
 
