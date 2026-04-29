@@ -86,12 +86,19 @@ function init() {
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 function getConfig() {
-  if (!fs.existsSync(CFG_PATH)) return { ...CFG_DEFAULTS };
-  try {
-    return { ...CFG_DEFAULTS, ...JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')) };
-  } catch {
-    return { ...CFG_DEFAULTS };
-  }
+  const fileConfig = (() => {
+    if (!fs.existsSync(CFG_PATH)) return {};
+    try { return JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')); } catch { return {}; }
+  })();
+
+  const merged = { ...CFG_DEFAULTS, ...fileConfig };
+
+  // Env-var keys always win over empty saved values so the server owner
+  // can ship pre-configured keys in .env without users needing to set them.
+  if (merged.tmdbApiKey === '' && process.env.TMDB_API_KEY) merged.tmdbApiKey = process.env.TMDB_API_KEY;
+  if (merged.omdbApiKey === '' && process.env.OMDB_API_KEY) merged.omdbApiKey = process.env.OMDB_API_KEY;
+
+  return merged;
 }
 
 function saveConfig(updates) {

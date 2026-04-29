@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const os      = require('os');
 const path    = require('path');
 const fs      = require('fs');
 
@@ -160,14 +161,31 @@ const BLOCKED_PATH_PREFIXES = process.platform === 'win32' ? [] : [
 app.get('/api/browse', (req, res) => {
   const requestedPath = req.query.path;
 
-  // No path supplied → return suggestions and root
+  // No path supplied → start from home directory so the browser is immediately navigable
   if (!requestedPath) {
-    return res.json({
-      current:     null,
-      parent:      null,
-      entries:     [],
-      suggestions: getMediaSuggestions(),
-    });
+    const suggestions = getMediaSuggestions();
+    const defaultPath = os.homedir();
+
+    if (!fs.existsSync(defaultPath)) {
+      return res.json({ current: null, parent: null, entries: [], suggestions });
+    }
+
+    let rawEntries;
+    try {
+      rawEntries = fs.readdirSync(defaultPath, { withFileTypes: true });
+    } catch (_err) {
+      return res.json({ current: null, parent: null, entries: [], suggestions });
+    }
+
+    const entries = rawEntries
+      .filter(e => e.isDirectory() && !e.name.startsWith('.') && !BROWSE_SKIP.has(e.name))
+      .map(e => ({ name: e.name, path: path.join(defaultPath, e.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const parentPath = path.dirname(defaultPath);
+    const parent     = parentPath !== defaultPath ? parentPath : null;
+
+    return res.json({ current: defaultPath, parent, entries, suggestions });
   }
 
   const resolved = path.resolve(requestedPath);
