@@ -113,6 +113,11 @@ a{color:#e50914;text-decoration:none}img{display:block}
   font-size:14px;font-weight:700;
 }
 #folder-input{display:none}
+.grant-banner{
+  background:rgba(229,9,20,.1);border:1px solid rgba(229,9,20,.35);
+  margin:12px 20px 0;padding:12px 16px;border-radius:8px;
+  cursor:pointer;font-size:13px;line-height:1.5;
+}
 
 /* Scan progress */
 #scan-overlay{
@@ -696,7 +701,7 @@ a{color:#e50914;text-decoration:none}img{display:block}
   </div>
 
   <!-- Re-grant folder access banner (shown when handle is stored but permission lapsed) -->
-  <div id="grant-banner" style="display:none;background:rgba(229,9,20,.1);border:1px solid rgba(229,9,20,.35);margin:12px 20px 0;padding:12px 16px;border-radius:8px;cursor:pointer;font-size:13px;line-height:1.5" onclick="grantFolderAccess()">
+  <div id="grant-banner" class="grant-banner" style="display:none" onclick="grantFolderAccess()">
     📂 <strong>Tap here to re-grant folder access</strong> — Lumière will automatically reload your media library.
   </div>
 
@@ -995,6 +1000,9 @@ const SCAN_SKIP = new Set([
   'Windows', 'Program Files', 'Program Files (x86)', '.Trash',
 ]);
 
+// Files to skip during directory scan (samples, trailers, bonus content)
+const SCAN_SKIP_FILE_RE = /\b(sample|trailer|featurette|behind.the.scenes|deleted.scene)\b/i;
+
 // Recursively scan a FileSystemDirectoryHandle for video files
 async function scanDirectoryHandle(handle, results = []) {
   for await (const [name, entry] of handle) {
@@ -1002,7 +1010,7 @@ async function scanDirectoryHandle(handle, results = []) {
     if (entry.kind === 'directory') {
       await scanDirectoryHandle(entry, results);
     } else if (entry.kind === 'file' && VIDEO_EXT.test(name)) {
-      if (/\b(sample|trailer|featurette|behind.the.scenes|deleted.scene)\b/i.test(name)) continue;
+      if (SCAN_SKIP_FILE_RE.test(name)) continue;
       const file = await entry.getFile();
       file._fsHandle = entry;   // stash the handle for later playback
       results.push(file);
