@@ -90,6 +90,20 @@ When a version tag (`v*`) is pushed, the APK is also attached directly to the **
 3. Tap the APK file in your file manager and choose **Install**
 4. Launch **Lumière** from your home screen
 
+### Preconfigure TMDB / OMDB in the Android app
+
+If you want the APK to ship with metadata already enabled, set these environment variables before building:
+
+```bash
+export TMDB_API_KEY=your_tmdb_key
+export OMDB_API_KEY=your_omdb_key
+```
+
+The Android build bakes them into the app, so posters and ratings are ready on first launch without manual entry.
+
+> [!WARNING]
+> Bundled API keys can be extracted from a shipped APK. Use dedicated low-privilege keys, and prefer runtime configuration if you want to avoid embedding keys in the app package.
+
 ### First use
 
 1. Tap **Select Videos** on the setup screen

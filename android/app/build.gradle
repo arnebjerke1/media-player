@@ -1,8 +1,29 @@
 apply plugin: 'com.android.application'
 
+def readAppSecret = { String propName, String envName ->
+    def value = project.findProperty(propName)
+    if (value == null || value.toString().trim().isEmpty()) {
+        value = System.getenv(envName)
+    }
+    return (value ?: '').toString()
+}
+
+def escapeBuildConfigString = { String value ->
+    value = (value ?: '').toString()
+    value
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
+        .replace('\n', '\\n')
+        .replace('\r', '\\r')
+        .replace('\t', '\\t')
+}
+
 android {
     namespace "com.lumiere.player"
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.lumiere.player"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -10,6 +31,8 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "LUMIERE_TMDB_API_KEY", "\"${escapeBuildConfigString(readAppSecret('LUMIERE_TMDB_API_KEY', 'TMDB_API_KEY'))}\""
+        buildConfigField "String", "LUMIERE_OMDB_API_KEY", "\"${escapeBuildConfigString(readAppSecret('LUMIERE_OMDB_API_KEY', 'OMDB_API_KEY'))}\""
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
