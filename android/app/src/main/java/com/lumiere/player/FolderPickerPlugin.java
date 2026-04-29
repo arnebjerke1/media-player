@@ -7,15 +7,16 @@ import android.content.SharedPreferences;
 import android.content.UriPermission;
 import android.net.Uri;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.documentfile.provider.DocumentFile;
 
-import com.getcapacitor.ActivityResult;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.util.List;
@@ -38,20 +39,31 @@ public class FolderPickerPlugin extends Plugin {
         ".ogv", ".vob", ".m2ts", ".mts"
     };
 
+    private ActivityResultLauncher<Intent> folderPickerLauncher;
+
+    @Override
+    public void load() {
+        folderPickerLauncher = getActivity().registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> handleFolderResult(getSavedCall(), result)
+        );
+    }
+
     // ── pickFolder ─────────────────────────────────────────────────────────────
 
     @PluginMethod
     public void pickFolder(PluginCall call) {
+        saveCall(call);
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         intent.addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION |
             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
         );
-        startActivityForResult(call, intent, "handleFolderResult");
+        folderPickerLauncher.launch(intent);
     }
 
-    @ActivityCallback
     private void handleFolderResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
         if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
             call.reject("USER_CANCELLED");
             return;
