@@ -5,7 +5,7 @@ const path = require('path');
 // TV show episode pattern: Show.Name.S01E02.Episode.Title or S01E02E03 etc.
 const TV_RE  = /^(.*?)\s*[Ss](\d{1,2})[Ee](\d{1,2})/;
 // Alternative: Show.Name.1x02 (season x episode)
-const TV_RE2 = /^(.*?)\s*(\d{1,2})x(\d{2,3})\b/i;
+const TV_RE2 = /^(.*?)\s*(\d{1,2})x(\d{1,3})\b/i;
 
 // Tags that reliably mark the end of a meaningful title in torrent-style filenames
 const CUTOFF_RE =

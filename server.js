@@ -141,8 +141,21 @@ function getMediaSuggestions() {
     path.join(home, 'Movies'), path.join(home, 'Videos'),
     path.join(home, 'TV Shows'), '/media', '/mnt',
   ];
-  return candidates.filter(p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
+  return candidates.filter(p => {
+    try { return fs.statSync(p).isDirectory(); } catch (err) {
+      if (err.code !== 'ENOENT' && err.code !== 'EACCES') {
+        console.warn('[browse] Unexpected error checking suggestion', p, err.message);
+      }
+      return false;
+    }
+  });
 }
+
+// Prefixes that should never be browsed (sensitive system directories)
+const BLOCKED_PATH_PREFIXES = process.platform === 'win32' ? [] : [
+  '/etc', '/boot', '/bin', '/sbin', '/lib', '/lib64',
+  '/usr/bin', '/usr/sbin', '/usr/lib',
+];
 
 app.get('/api/browse', (req, res) => {
   const requestedPath = req.query.path;
@@ -158,6 +171,13 @@ app.get('/api/browse', (req, res) => {
   }
 
   const resolved = path.resolve(requestedPath);
+
+  // Block access to sensitive system directories
+  for (const prefix of BLOCKED_PATH_PREFIXES) {
+    if (resolved === prefix || resolved.startsWith(prefix + '/') || resolved.startsWith(prefix + path.sep)) {
+      return res.status(403).json({ error: 'Access to this directory is not permitted' });
+    }
+  }
 
   if (!fs.existsSync(resolved)) {
     return res.status(404).json({ error: 'Directory not found' });

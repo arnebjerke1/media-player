@@ -119,7 +119,7 @@ function showOnboarding() {
   // If API keys are already configured, show that step 2 will be skipped
   if (config.tmdbApiKey) {
     const desc = document.getElementById('ob-apikey-desc');
-    if (desc) desc.textContent = 'API keys are already configured on the server — metadata will be fetched automatically. You can update them here if needed.';
+    if (desc) desc.textContent = 'API keys are already configured on the server — metadata will be fetched automatically. You can update them later in Settings if needed.';
     const nextBtn = document.getElementById('ob-next-btn');
     if (nextBtn) nextBtn.textContent = 'Finish & Scan Library';
   }
@@ -138,8 +138,11 @@ async function loadFolderSuggestions() {
     if (!container || !data.suggestions?.length) return;
     container.innerHTML = '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Suggested folders:</div>'
       + data.suggestions.map(s => `
-        <button class="folder-suggestion-btn" onclick="obUseSuggestion('${esc(s)}')">${esc(s)}</button>
+        <button class="folder-suggestion-btn" data-path="${esc(s)}">${esc(s)}</button>
       `).join('');
+    container.querySelectorAll('.folder-suggestion-btn').forEach(btn => {
+      btn.addEventListener('click', () => obUseSuggestion(btn.dataset.path));
+    });
   } catch { /* non-fatal */ }
 }
 
@@ -1102,7 +1105,7 @@ async function _fbNavigate(dirPath) {
 
     // Parent folder link
     if (data.parent) {
-      html += `<div class="fb-item fb-parent" onclick="_fbNavigate('${esc(data.parent)}')">
+      html += `<div class="fb-item fb-parent" data-nav="${esc(data.parent)}">
         <span class="fb-icon">⬆</span> <span>.. (Up)</span>
       </div>`;
     }
@@ -1111,7 +1114,7 @@ async function _fbNavigate(dirPath) {
     if (data.suggestions?.length) {
       html += '<div class="fb-section-label">Suggested media folders</div>';
       html += data.suggestions.map(s => `
-        <div class="fb-item fb-suggestion" onclick="_fbNavigate('${esc(s)}')">
+        <div class="fb-item fb-suggestion" data-nav="${esc(s)}">
           <span class="fb-icon">📁</span>
           <span class="fb-name">${esc(s)}</span>
         </div>`).join('');
@@ -1121,7 +1124,7 @@ async function _fbNavigate(dirPath) {
     // Sub-directories
     if (data.entries?.length) {
       html += data.entries.map(e => `
-        <div class="fb-item" onclick="_fbNavigate('${esc(e.path)}')">
+        <div class="fb-item" data-nav="${esc(e.path)}">
           <span class="fb-icon">📁</span>
           <span class="fb-name">${esc(e.name)}</span>
         </div>`).join('');
@@ -1130,6 +1133,11 @@ async function _fbNavigate(dirPath) {
     }
 
     list.innerHTML = html;
+
+    // Attach navigation via event delegation on data-nav items
+    list.querySelectorAll('.fb-item[data-nav]').forEach(item => {
+      item.addEventListener('click', () => _fbNavigate(item.dataset.nav));
+    });
   } catch (err) {
     list.innerHTML = `<div style="color:var(--accent-red,#e05);padding:12px;font-size:13px">Error: ${esc(err.message)}</div>`;
   }
