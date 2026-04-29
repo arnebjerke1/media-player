@@ -289,21 +289,25 @@ async function runScan() {
             });
           }
 
-          // Re-fetch metadata if API key is available but poster is still missing
-          if (config.tmdbApiKey && !existingItem.poster_path) {
+          // Re-fetch metadata if missing poster:
+          //   TV shows → always (TVMaze is free, no key needed)
+          //   Movies   → only when a TMDB API key is configured
+          const isTv = existingItem.media_type === 'tv' && existingItem.show_name;
+          const canFetch = !existingItem.poster_path && (isTv || config.tmdbApiKey);
+          if (canFetch) {
             try {
               let updatedMeta = null;
-              if (existingItem.media_type === 'tv' && existingItem.show_name) {
+              if (isTv) {
                 if (!tvMetaCache[existingItem.show_name]) {
                   tvMetaCache[existingItem.show_name] = await fetchTvMetadata(existingItem.show_name, config.tmdbApiKey, config.omdbApiKey);
                 }
                 updatedMeta = tvMetaCache[existingItem.show_name];
 
-                // Also fetch season poster if we have a tmdbId and season
-                if (updatedMeta?.tmdbId && existingItem.season != null) {
-                  const spKey = `${updatedMeta.tmdbId}_${existingItem.season}`;
+                // Fetch season poster via TVMaze
+                if (updatedMeta?.tvMazeId && existingItem.season != null) {
+                  const spKey = `${updatedMeta.tvMazeId}_${existingItem.season}`;
                   if (!tvSeasonPosterCache[spKey]) {
-                    tvSeasonPosterCache[spKey] = await fetchSeasonPoster(updatedMeta.tmdbId, existingItem.season, config.tmdbApiKey);
+                    tvSeasonPosterCache[spKey] = await fetchSeasonPoster(updatedMeta.tvMazeId, existingItem.season);
                   }
                   updatedMeta = { ...updatedMeta, seasonPosterPath: tvSeasonPosterCache[spKey] };
                 }
@@ -316,6 +320,7 @@ async function runScan() {
                   title:            updatedMeta.title,
                   year:             updatedMeta.year,
                   tmdbId:           updatedMeta.tmdbId,
+                  tvMazeId:         updatedMeta.tvMazeId,
                   imdbId:           updatedMeta.imdbId,
                   overview:         updatedMeta.overview,
                   tagline:          updatedMeta.tagline,
@@ -354,27 +359,24 @@ async function runScan() {
       let seasonPosterPath = null;
 
       if (tvParsed) {
-        // TV show episode
+        // TV show episode — TVMaze is free, fetch metadata without any API key
         mediaType = 'tv';
         showName  = tvParsed.showName;
         season    = tvParsed.season;
         episode   = tvParsed.episode;
 
-        if (config.tmdbApiKey) {
-          // Use cached TV show metadata
-          if (!tvMetaCache[showName]) {
-            tvMetaCache[showName] = await fetchTvMetadata(showName, config.tmdbApiKey, config.omdbApiKey);
-          }
-          meta = tvMetaCache[showName];
+        if (!tvMetaCache[showName]) {
+          tvMetaCache[showName] = await fetchTvMetadata(showName, config.tmdbApiKey, config.omdbApiKey);
+        }
+        meta = tvMetaCache[showName];
 
-          // Fetch season-specific poster
-          if (meta?.tmdbId && season != null) {
-            const spKey = `${meta.tmdbId}_${season}`;
-            if (!tvSeasonPosterCache[spKey]) {
-              tvSeasonPosterCache[spKey] = await fetchSeasonPoster(meta.tmdbId, season, config.tmdbApiKey);
-            }
-            seasonPosterPath = tvSeasonPosterCache[spKey];
+        // Fetch season-specific poster via TVMaze
+        if (meta?.tvMazeId && season != null) {
+          const spKey = `${meta.tvMazeId}_${season}`;
+          if (!tvSeasonPosterCache[spKey]) {
+            tvSeasonPosterCache[spKey] = await fetchSeasonPoster(meta.tvMazeId, season);
           }
+          seasonPosterPath = tvSeasonPosterCache[spKey];
         }
       } else {
         // Regular movie
@@ -399,6 +401,7 @@ async function runScan() {
                              : (meta?.title || parseFilename(filename).title),
         year:              meta?.year         || null,
         tmdbId:            meta?.tmdbId       || null,
+        tvmazeId:          meta?.tvMazeId     || null,
         imdbId:            meta?.imdbId       || null,
         overview:          meta?.overview     || null,
         tagline:           meta?.tagline      || null,
