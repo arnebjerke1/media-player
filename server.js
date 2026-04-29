@@ -6,10 +6,11 @@ const express = require('express');
 const os      = require('os');
 const path    = require('path');
 const fs      = require('fs');
+const { execSync, spawn } = require('child_process');
 
 const db                        = require('./src/db');
 const { scanDirectory, findSubtitles } = require('./src/scanner');
-const { fetchMetadata, fetchTvMetadata }         = require('./src/metadata');
+const { fetchMetadata, fetchTvMetadata, fetchSeasonPoster } = require('./src/metadata');
 const { parseFilename, parseTvFilename, detectQuality }  = require('./src/parser');
 
 const app  = express();
@@ -22,6 +23,16 @@ db.init();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ── FFmpeg availability ────────────────────────────────────────────────────────
+let ffmpegAvailable = false;
+try {
+  execSync('ffmpeg -version', { stdio: 'pipe' });
+  ffmpegAvailable = true;
+  console.log('[ffmpeg] Transcoding available');
+} catch {
+  console.log('[ffmpeg] Not found – transcoding disabled');
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function parseMedia(item) {
@@ -44,6 +55,11 @@ app.post('/api/config', (req, res) => {
   const { theme, mediaFolders, tmdbApiKey, omdbApiKey, setupComplete } = req.body;
   db.saveConfig({ theme, mediaFolders, tmdbApiKey, omdbApiKey, setupComplete });
   res.json({ success: true });
+});
+
+// ── Capabilities API ───────────────────────────────────────────────────────────
+app.get('/api/capabilities', (_req, res) => {
+  res.json({ ffmpegAvailable });
 });
 
 // ── Media API ──────────────────────────────────────────────────────────────────
@@ -243,13 +259,66 @@ async function runScan() {
 
     // Cache TV show metadata so we only fetch once per show
     const tvMetaCache = {};
+    // Cache TV season posters per show+season
+    const tvSeasonPosterCache = {};
 
     for (const filePath of files) {
       scanState.current = path.basename(filePath);
 
-      if (db.getMediaByPath(filePath)) {
+      const existingRef = db.getMediaByPath(filePath);
+      if (existingRef) {
+        // Already indexed — re-fetch metadata if API key is available but poster is still missing
+        if (config.tmdbApiKey) {
+          const existingItem = db.getMediaById(existingRef.id);
+          if (existingItem && !existingItem.poster_path) {
+            try {
+              let updatedMeta = null;
+              if (existingItem.media_type === 'tv' && existingItem.show_name) {
+                if (!tvMetaCache[existingItem.show_name]) {
+                  tvMetaCache[existingItem.show_name] = await fetchTvMetadata(existingItem.show_name, config.tmdbApiKey, config.omdbApiKey);
+                }
+                updatedMeta = tvMetaCache[existingItem.show_name];
+
+                // Also fetch season poster if we have a tmdbId and season
+                if (updatedMeta?.tmdbId && existingItem.season != null) {
+                  const spKey = `${updatedMeta.tmdbId}_${existingItem.season}`;
+                  if (!tvSeasonPosterCache[spKey]) {
+                    tvSeasonPosterCache[spKey] = await fetchSeasonPoster(updatedMeta.tmdbId, existingItem.season, config.tmdbApiKey);
+                  }
+                  updatedMeta = { ...updatedMeta, seasonPosterPath: tvSeasonPosterCache[spKey] };
+                }
+              } else {
+                const parsed = parseFilename(existingItem.filename);
+                updatedMeta = await fetchMetadata(parsed.title, parsed.year, config.tmdbApiKey, config.omdbApiKey);
+              }
+              if (updatedMeta) {
+                db.updateMedia(existingItem.id, {
+                  title:            updatedMeta.title,
+                  year:             updatedMeta.year,
+                  tmdbId:           updatedMeta.tmdbId,
+                  imdbId:           updatedMeta.imdbId,
+                  overview:         updatedMeta.overview,
+                  tagline:          updatedMeta.tagline,
+                  posterPath:       updatedMeta.posterPath,
+                  backdropPath:     updatedMeta.backdropPath,
+                  seasonPosterPath: updatedMeta.seasonPosterPath || null,
+                  genres:           updatedMeta.genres ? JSON.stringify(updatedMeta.genres) : null,
+                  rating:           updatedMeta.rating,
+                  rtScore:          updatedMeta.rtScore,
+                  runtime:          updatedMeta.runtime,
+                  language:         updatedMeta.language,
+                  cast:             updatedMeta.cast ? JSON.stringify(updatedMeta.cast) : null,
+                  director:         updatedMeta.director,
+                  certification:    updatedMeta.certification || null,
+                });
+              }
+            } catch (err) {
+              console.error('[scan] metadata re-fetch error:', err.message);
+            }
+          }
+        }
         scanState.processed++;
-        continue; // already indexed
+        continue;
       }
 
       const filename = path.basename(filePath);
@@ -257,11 +326,12 @@ async function runScan() {
       const quality  = detectQuality(filename);
       const subs     = findSubtitles(filePath);
 
-      let meta      = null;
-      let mediaType = 'movie';
-      let showName  = null;
-      let season    = null;
-      let episode   = null;
+      let meta             = null;
+      let mediaType        = 'movie';
+      let showName         = null;
+      let season           = null;
+      let episode          = null;
+      let seasonPosterPath = null;
 
       if (tvParsed) {
         // TV show episode
@@ -276,6 +346,15 @@ async function runScan() {
             tvMetaCache[showName] = await fetchTvMetadata(showName, config.tmdbApiKey, config.omdbApiKey);
           }
           meta = tvMetaCache[showName];
+
+          // Fetch season-specific poster
+          if (meta?.tmdbId && season != null) {
+            const spKey = `${meta.tmdbId}_${season}`;
+            if (!tvSeasonPosterCache[spKey]) {
+              tvSeasonPosterCache[spKey] = await fetchSeasonPoster(meta.tmdbId, season, config.tmdbApiKey);
+            }
+            seasonPosterPath = tvSeasonPosterCache[spKey];
+          }
         }
       } else {
         // Regular movie
@@ -289,35 +368,36 @@ async function runScan() {
       }
 
       db.saveMedia({
-        path:          filePath,
+        path:              filePath,
         filename,
         mediaType,
-        showName:      showName  || null,
-        season:        season    || null,
-        episode:       episode   || null,
-        title:         tvParsed
-                         ? (meta?.title ? `${meta.title} S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}` : filename)
-                         : (meta?.title || parseFilename(filename).title),
-        year:          meta?.year         || null,
-        tmdbId:        meta?.tmdbId       || null,
-        imdbId:        meta?.imdbId       || null,
-        overview:      meta?.overview     || null,
-        tagline:       meta?.tagline      || null,
-        posterPath:    meta?.posterPath   || null,
-        backdropPath:  meta?.backdropPath || null,
-        genres:        meta?.genres       ? JSON.stringify(meta.genres)    : null,
-        rating:        meta?.rating       || null,
-        rtScore:       meta?.rtScore      || null,
-        runtime:       meta?.runtime      || null,
-        language:      meta?.language     || null,
-        cast:          meta?.cast         ? JSON.stringify(meta.cast)      : null,
-        director:      meta?.director     || null,
-        certification: meta?.certification || null,
-        quality:       quality.quality      || null,
-        hdr:           quality.hdr          ? 1 : 0,
-        dolbyVision:   quality.dolbyVision  ? 1 : 0,
-        atmos:         quality.atmos        ? 1 : 0,
-        subtitles:     subs.length          ? JSON.stringify(subs) : null,
+        showName:          showName  || null,
+        season:            season    || null,
+        episode:           episode   || null,
+        title:             tvParsed
+                             ? (meta?.title ? `${meta.title} S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}` : filename)
+                             : (meta?.title || parseFilename(filename).title),
+        year:              meta?.year         || null,
+        tmdbId:            meta?.tmdbId       || null,
+        imdbId:            meta?.imdbId       || null,
+        overview:          meta?.overview     || null,
+        tagline:           meta?.tagline      || null,
+        posterPath:        meta?.posterPath   || null,
+        backdropPath:      meta?.backdropPath || null,
+        seasonPosterPath:  seasonPosterPath   || null,
+        genres:            meta?.genres       ? JSON.stringify(meta.genres)    : null,
+        rating:            meta?.rating       || null,
+        rtScore:           meta?.rtScore      || null,
+        runtime:           meta?.runtime      || null,
+        language:          meta?.language     || null,
+        cast:              meta?.cast         ? JSON.stringify(meta.cast)      : null,
+        director:          meta?.director     || null,
+        certification:     meta?.certification || null,
+        quality:           quality.quality      || null,
+        hdr:               quality.hdr          ? 1 : 0,
+        dolbyVision:       quality.dolbyVision  ? 1 : 0,
+        atmos:             quality.atmos        ? 1 : 0,
+        subtitles:         subs.length          ? JSON.stringify(subs) : null,
       });
 
       scanState.processed++;
@@ -398,7 +478,57 @@ app.get('/api/stream/:id', (req, res) => {
   }
 });
 
-// ── Subtitles API ──────────────────────────────────────────────────────────────
+// ── Transcode API (FFmpeg fallback for unsupported codecs) ─────────────────────
+app.get('/api/transcode/:id', (req, res) => {
+  if (!ffmpegAvailable) {
+    return res.status(503).json({ error: 'FFmpeg not available on this server' });
+  }
+
+  const item = db.getMediaById(parseInt(req.params.id, 10));
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!fs.existsSync(item.path)) return res.status(404).json({ error: 'File not found on disk' });
+
+  // Parse optional start time for seeking
+  const startSec = req.query.start ? parseFloat(req.query.start) : 0;
+
+  res.writeHead(200, {
+    'Content-Type':      'video/mp4',
+    'Transfer-Encoding': 'chunked',
+    'Cache-Control':     'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+  });
+
+  const args = [
+    '-loglevel', 'error',
+  ];
+  if (startSec > 0) {
+    args.push('-ss', String(startSec));
+  }
+  args.push(
+    '-i', item.path,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-ac', '2',          // down-mix to stereo (handles multi-channel audio)
+    '-movflags', 'frag_keyframe+empty_moov+faststart',
+    '-f', 'mp4',
+    'pipe:1',
+  );
+
+  const ffProc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  ffProc.stdout.pipe(res);
+  ffProc.stderr.on('data', d => console.error('[ffmpeg transcode]', d.toString().trim()));
+
+  req.on('close', () => { try { ffProc.kill('SIGTERM'); } catch {} });
+  ffProc.on('error', err => {
+    console.error('[ffmpeg] spawn error:', err.message);
+    if (!res.headersSent) res.status(500).end();
+  });
+});
+
+
 app.get('/api/subtitles/:mediaId/:subIndex', (req, res) => {
   const item = db.getMediaById(parseInt(req.params.mediaId, 10));
   if (!item) return res.status(404).json({ error: 'Not found' });

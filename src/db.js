@@ -78,6 +78,7 @@ function init() {
     'ALTER TABLE media ADD COLUMN show_name TEXT',
     'ALTER TABLE media ADD COLUMN season INTEGER',
     'ALTER TABLE media ADD COLUMN episode INTEGER',
+    'ALTER TABLE media ADD COLUMN season_poster_path TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -136,14 +137,14 @@ function saveMedia(item) {
     INSERT OR REPLACE INTO media
       (path, filename, media_type, title, show_name, season, episode,
        year, tmdb_id, imdb_id, overview, tagline,
-       poster_path, backdrop_path, genres, rating, rt_score, runtime,
+       poster_path, backdrop_path, season_poster_path, genres, rating, rt_score, runtime,
        language, cast, director, subtitles,
        quality, hdr, dolby_vision, atmos, certification,
        added_at, last_updated)
     VALUES
       (@path, @filename, @mediaType, @title, @showName, @season, @episode,
        @year, @tmdbId, @imdbId, @overview, @tagline,
-       @posterPath, @backdropPath, @genres, @rating, @rtScore, @runtime,
+       @posterPath, @backdropPath, @seasonPosterPath, @genres, @rating, @rtScore, @runtime,
        @language, @cast, @director, @subtitles,
        @quality, @hdr, @dolbyVision, @atmos, @certification,
        unixepoch(), unixepoch())
@@ -155,6 +156,7 @@ function updateMedia(id, u) {
     title: u.title, year: u.year, tmdb_id: u.tmdbId, imdb_id: u.imdbId,
     overview: u.overview, tagline: u.tagline,
     poster_path: u.posterPath, backdrop_path: u.backdropPath,
+    season_poster_path: u.seasonPosterPath,
     genres: u.genres, rating: u.rating, rt_score: u.rtScore,
     runtime: u.runtime, language: u.language, cast: u.cast, director: u.director,
     certification: u.certification,

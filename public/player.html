@@ -9,7 +9,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #fff; }
-    button { cursor: pointer; border: none; outline: none; background: none; color: inherit; }
+    button { cursor: pointer; border: none; outline: none; background: none; color: inherit; -webkit-tap-highlight-color: transparent; }
 
     /* ── Video ─────────────────────────────────────────────────────────── */
     #video-wrap {
@@ -27,28 +27,27 @@
       position: fixed; inset: 0; z-index: 10;
       display: flex; flex-direction: column;
       justify-content: space-between;
-      transition: opacity .3s;
+      transition: opacity .25s;
     }
     #controls.hidden { opacity: 0; pointer-events: none; }
 
     /* Top bar */
     #ctrl-top {
-      background: linear-gradient(to bottom, rgba(0,0,0,.75) 0%, transparent 100%);
-      padding: 16px 24px;
-      display: flex; align-items: center; gap: 14px;
+      background: linear-gradient(to bottom, rgba(0,0,0,.7) 0%, transparent 100%);
+      padding: 14px 20px;
+      display: flex; align-items: center; gap: 12px;
     }
     .back-btn {
       display: flex; align-items: center; gap: 6px;
-      padding: 6px 14px; border-radius: 6px;
-      background: rgba(255,255,255,.12);
-      backdrop-filter: blur(8px);
-      font-size: 14px; font-weight: 600;
+      padding: 5px 12px; border-radius: 5px;
+      background: rgba(255,255,255,.10);
+      font-size: 13px; font-weight: 500;
       transition: background .15s;
     }
-    .back-btn:hover { background: rgba(255,255,255,.22); }
+    .back-btn:hover { background: rgba(255,255,255,.20); }
     #movie-title-top {
-      font-size: 16px; font-weight: 700;
-      opacity: .9;
+      font-size: 15px; font-weight: 600;
+      opacity: .85;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       flex: 1;
     }
@@ -62,10 +61,12 @@
       position: relative;
     }
     .skip-indicator {
-      font-size: 36px; opacity: 0;
+      font-size: 15px; opacity: 0; font-weight: 600;
       transition: opacity .15s;
       pointer-events: none;
-      text-shadow: 0 2px 8px rgba(0,0,0,.8);
+      background: rgba(0,0,0,.45);
+      padding: 6px 14px; border-radius: 20px;
+      backdrop-filter: blur(4px);
     }
     .skip-indicator.show { opacity: 1; }
 
@@ -73,53 +74,58 @@
     #play-indicator {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 64px;
       opacity: 0;
       pointer-events: none;
-      text-shadow: 0 4px 16px rgba(0,0,0,.8);
       transition: opacity .2s;
+    }
+    #play-indicator .pi-icon {
+      width: 64px; height: 64px;
+      background: rgba(0,0,0,.55);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px);
     }
     #play-indicator.flash { opacity: 1; }
 
     /* Bottom bar */
     #ctrl-bottom {
-      background: linear-gradient(to top, rgba(0,0,0,.85) 0%, transparent 100%);
-      padding: 16px 24px 20px;
+      background: linear-gradient(to top, rgba(0,0,0,.80) 0%, transparent 100%);
+      padding: 12px 20px 18px;
     }
 
     /* Progress / seek bar */
     .seek-wrap {
       position: relative; height: 20px;
       display: flex; align-items: center;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       cursor: pointer;
     }
     .seek-track {
-      width: 100%; height: 4px;
-      background: rgba(255,255,255,.25);
+      width: 100%; height: 3px;
+      background: rgba(255,255,255,.22);
       border-radius: 2px;
       position: relative;
       transition: height .15s;
     }
-    .seek-wrap:hover .seek-track { height: 6px; }
+    .seek-wrap:hover .seek-track { height: 5px; }
     .seek-buffered {
       position: absolute; left: 0; top: 0; height: 100%;
-      background: rgba(255,255,255,.3);
+      background: rgba(255,255,255,.25);
       border-radius: 2px;
       pointer-events: none;
     }
     .seek-played {
       position: absolute; left: 0; top: 0; height: 100%;
-      background: var(--accent, #e50914);
+      background: #fff;
       border-radius: 2px;
       pointer-events: none;
     }
     .seek-thumb {
       position: absolute; top: 50%; transform: translate(-50%, -50%);
-      width: 14px; height: 14px;
+      width: 12px; height: 12px;
       background: #fff;
       border-radius: 50%;
-      box-shadow: 0 2px 6px rgba(0,0,0,.5);
+      box-shadow: 0 1px 4px rgba(0,0,0,.5);
       pointer-events: none;
       opacity: 0;
       transition: opacity .15s;
@@ -128,9 +134,9 @@
 
     /* Hover time tooltip */
     .seek-tooltip {
-      position: absolute; bottom: 24px;
-      background: rgba(0,0,0,.85); color: #fff;
-      font-size: 12px; padding: 3px 7px; border-radius: 4px;
+      position: absolute; bottom: 22px;
+      background: rgba(0,0,0,.80); color: #fff;
+      font-size: 11px; padding: 2px 6px; border-radius: 3px;
       pointer-events: none; opacity: 0;
       transform: translateX(-50%);
       white-space: nowrap;
@@ -139,35 +145,26 @@
 
     /* Bottom row buttons */
     .ctrl-row {
-      display: flex; align-items: center; gap: 12px;
+      display: flex; align-items: center; gap: 8px;
     }
     .ctrl-btn {
       display: flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px;
+      width: 36px; height: 36px;
       border-radius: 50%;
-      font-size: 22px;
-      transition: background .15s, transform .1s;
+      color: rgba(255,255,255,.85);
+      transition: color .15s, background .15s, transform .1s;
     }
-    .ctrl-btn:hover    { background: rgba(255,255,255,.15); }
+    .ctrl-btn:hover    { background: rgba(255,255,255,.10); color: #fff; }
     .ctrl-btn:active   { transform: scale(.9); }
-    .ctrl-btn.active   { color: var(--accent, #e50914); }
-    .ctrl-btn-sm { width: 34px; height: 34px; font-size: 16px; }
-    .ctrl-btn-lg { width: 48px; height: 48px; font-size: 28px; }
-
-    /* Skip ±10 */
-    .skip-btn { font-size: 18px; position: relative; }
-    .skip-btn::after {
-      content: attr(data-skip);
-      position: absolute; bottom: -2px;
-      font-size: 9px; font-weight: 700; letter-spacing: .3px;
-      opacity: .7;
-    }
+    .ctrl-btn.active   { color: #fff; }
+    .ctrl-btn-sm { width: 30px; height: 30px; }
+    .ctrl-btn-lg { width: 44px; height: 44px; }
 
     /* Time display */
     .time-display {
-      font-size: 13px; font-weight: 500;
+      font-size: 12px; font-weight: 500;
       letter-spacing: .3px;
-      opacity: .85;
+      opacity: .75;
       white-space: nowrap;
     }
 
@@ -175,98 +172,112 @@
 
     /* Volume control */
     .vol-wrap {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; gap: 6px;
     }
     .vol-slider {
       -webkit-appearance: none; appearance: none;
-      width: 80px; height: 4px;
-      background: rgba(255,255,255,.3);
+      width: 72px; height: 3px;
+      background: rgba(255,255,255,.25);
       border-radius: 2px; outline: none; cursor: pointer;
     }
     .vol-slider::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
-      width: 14px; height: 14px;
+      width: 12px; height: 12px;
       border-radius: 50%; background: #fff;
     }
 
+    /* Codec-error banner */
+    #codec-error-banner {
+      display: none;
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: rgba(20,20,20,.9);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      color: rgba(255,255,255,.85);
+      backdrop-filter: blur(8px);
+      z-index: 25;
+      gap: 12px;
+      align-items: center;
+      white-space: nowrap;
+    }
+    #codec-error-banner.show { display: flex; }
+    #codec-error-banner button {
+      background: rgba(255,255,255,.15);
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    #codec-error-banner button:hover { background: rgba(255,255,255,.25); }
+
     /* Speed & subtitles panel */
     .popup-menu {
-      position: absolute; bottom: 70px;
+      position: absolute; bottom: 50px;
       background: rgba(18,18,18,.95);
       backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 10px;
-      padding: 8px 0;
-      min-width: 140px;
-      box-shadow: 0 8px 32px rgba(0,0,0,.6);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 8px;
+      padding: 6px 0;
+      min-width: 130px;
+      box-shadow: 0 6px 24px rgba(0,0,0,.6);
       z-index: 20;
     }
     .popup-menu.right  { right: 0; }
     .popup-item {
-      padding: 10px 18px; font-size: 14px;
+      padding: 9px 16px; font-size: 13px;
       display: flex; align-items: center; gap: 8px;
       cursor: pointer; transition: background .1s;
     }
-    .popup-item:hover   { background: rgba(255,255,255,.1); }
-    .popup-item.active  { color: var(--accent, #e50914); font-weight: 700; }
+    .popup-item:hover   { background: rgba(255,255,255,.08); }
+    .popup-item.active  { color: #fff; font-weight: 700; }
     .popup-divider {
-      height: 1px; background: rgba(255,255,255,.1);
-      margin: 4px 0;
+      height: 1px; background: rgba(255,255,255,.08);
+      margin: 3px 0;
     }
     .popup-label {
-      padding: 6px 18px 2px;
+      padding: 5px 16px 2px;
       font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
-      color: rgba(255,255,255,.4);
+      color: rgba(255,255,255,.35);
     }
 
     /* Sleep timer pill */
     #sleep-pill {
       display: none;
-      position: fixed; top: 16px; right: 24px;
+      position: fixed; top: 14px; right: 20px;
       z-index: 30;
-      background: rgba(0,0,0,.7);
-      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(0,0,0,.65);
+      border: 1px solid rgba(255,255,255,.15);
       border-radius: 20px;
-      padding: 6px 14px; font-size: 13px;
+      padding: 5px 12px; font-size: 12px;
       backdrop-filter: blur(8px);
     }
-    #sleep-pill.visible { display: flex; align-items: center; gap: 6px; }
-
-    /* Poster overlay when paused */
-    #poster-overlay {
-      position: fixed; inset: 0; z-index: 1;
-      pointer-events: none;
-      display: flex; flex-direction: column; align-items: flex-start;
-      justify-content: flex-end;
-      padding: 40px 48px;
-      background: linear-gradient(to top, rgba(0,0,0,.6) 0%, transparent 50%);
-      opacity: 0; transition: opacity .4s;
-    }
-    #poster-overlay.visible { opacity: 1; }
+    #sleep-pill.visible { display: flex; align-items: center; gap: 5px; }
 
     /* Subtitles display */
     #subtitle-display {
-      position: fixed; bottom: 90px; left: 0; right: 0;
+      position: fixed; bottom: 85px; left: 0; right: 0;
       text-align: center;
       pointer-events: none;
       z-index: 5;
     }
     .subtitle-text {
       display: inline-block;
-      background: rgba(0,0,0,.75);
+      background: rgba(0,0,0,.72);
       color: #fff;
-      font-size: clamp(16px, 2.5vw, 26px);
-      padding: 4px 12px;
-      border-radius: 4px;
+      font-size: clamp(15px, 2.3vw, 24px);
+      padding: 3px 10px;
+      border-radius: 3px;
       line-height: 1.4;
       white-space: pre-wrap;
     }
 
     /* Keyboard shortcut hint */
     #shortcut-hint {
-      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.7); border-radius: 8px; padding: 8px 16px;
-      font-size: 12px; color: rgba(255,255,255,.6);
+      position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.65); border-radius: 6px; padding: 6px 14px;
+      font-size: 12px; color: rgba(255,255,255,.55);
       pointer-events: none; opacity: 0;
       transition: opacity .3s;
       white-space: nowrap;
@@ -280,9 +291,9 @@
       pointer-events: none;
     }
     .vspinner {
-      width: 48px; height: 48px;
-      border: 4px solid rgba(255,255,255,.15);
-      border-top-color: #fff;
+      width: 44px; height: 44px;
+      border: 3px solid rgba(255,255,255,.12);
+      border-top-color: rgba(255,255,255,.7);
       border-radius: 50%;
       animation: vspin .8s linear infinite;
     }
@@ -290,9 +301,9 @@
 
     /* Responsive */
     @media (max-width: 600px) {
-      .vol-slider { width: 60px; }
-      #ctrl-top { padding: 10px 14px; }
-      #ctrl-bottom { padding: 10px 14px 14px; }
+      .vol-slider { width: 55px; }
+      #ctrl-top { padding: 10px 12px; }
+      #ctrl-bottom { padding: 10px 12px 12px; }
     }
   </style>
 </head>
@@ -310,31 +321,43 @@
 <div id="subtitle-display"></div>
 
 <!-- Sleep timer pill -->
-<div id="sleep-pill">⏱ <span id="sleep-countdown"></span></div>
+<div id="sleep-pill">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <span id="sleep-countdown"></span>
+</div>
 
-<!-- Paused poster overlay -->
-<div id="poster-overlay"></div>
+<!-- Codec error banner -->
+<div id="codec-error-banner">
+  <span id="codec-error-msg">Format not supported by browser</span>
+  <button id="btn-external-player">Open in VLC</button>
+  <button id="btn-transcode">Server transcode</button>
+</div>
 
 <!-- Play/pause flash indicator -->
-<div id="play-indicator"></div>
+<div id="play-indicator">
+  <div class="pi-icon" id="pi-icon"></div>
+</div>
 
 <!-- Controls -->
 <div id="controls">
 
   <!-- Top -->
   <div id="ctrl-top">
-    <button class="back-btn" id="btn-back">← Back</button>
-    <span   id="movie-title-top"></span>
+    <button class="back-btn" id="btn-back">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <span id="movie-title-top"></span>
   </div>
 
   <!-- Middle (tap zones) -->
   <div id="ctrl-mid">
     <div class="tap-zone" id="tap-left">
-      <span class="skip-indicator" id="skip-left-ind">⏪ 10s</span>
+      <span class="skip-indicator" id="skip-left-ind">−10s</span>
     </div>
     <div class="tap-zone" id="tap-center"></div>
     <div class="tap-zone" id="tap-right">
-      <span class="skip-indicator" id="skip-right-ind">10s ⏩</span>
+      <span class="skip-indicator" id="skip-right-ind">+10s</span>
     </div>
   </div>
 
@@ -355,18 +378,35 @@
     <div class="ctrl-row">
 
       <!-- Back 10s -->
-      <button class="ctrl-btn skip-btn" id="btn-skip-back" data-skip="-10" title="Back 10s (←)">⏪</button>
+      <button class="ctrl-btn" id="btn-skip-back" title="Back 10s (←)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/>
+        </svg>
+      </button>
 
       <!-- Play / Pause -->
-      <button class="ctrl-btn ctrl-btn-lg" id="btn-play" title="Play/Pause (Space)">▶</button>
+      <button class="ctrl-btn ctrl-btn-lg" id="btn-play" title="Play/Pause (Space)">
+        <svg id="play-icon-svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+      </button>
 
       <!-- Forward 10s -->
-      <button class="ctrl-btn skip-btn" id="btn-skip-fwd" data-skip="+10" title="Forward 10s (→)">⏩</button>
+      <button class="ctrl-btn" id="btn-skip-fwd" title="Forward 10s (→)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/>
+        </svg>
+      </button>
 
       <!-- Volume -->
       <div class="vol-wrap">
-        <button class="ctrl-btn ctrl-btn-sm" id="btn-mute" title="Mute (M)">🔊</button>
-        <input  class="vol-slider" id="vol-slider" type="range" min="0" max="1" step="0.02" value="1" />
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-mute" title="Mute (M)">
+          <svg id="vol-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+        </button>
+        <input class="vol-slider" id="vol-slider" type="range" min="0" max="1" step="0.02" value="1" />
       </div>
 
       <!-- Time -->
@@ -376,18 +416,25 @@
 
       <!-- Subtitles -->
       <div style="position:relative">
-        <button class="ctrl-btn ctrl-btn-sm" id="btn-subs" title="Subtitles (C)">CC</button>
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-subs" title="Subtitles (C)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <line x1="6" y1="10" x2="14" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/>
+          </svg>
+        </button>
         <div class="popup-menu right" id="subs-menu" style="display:none"></div>
       </div>
 
       <!-- Speed -->
       <div style="position:relative">
-        <button class="ctrl-btn ctrl-btn-sm" id="btn-speed" title="Speed">1×</button>
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-speed" title="Speed">
+          <span id="speed-label" style="font-size:11px;font-weight:600;letter-spacing:-.3px">1×</span>
+        </button>
         <div class="popup-menu right" id="speed-menu" style="display:none">
           <div class="popup-label">Playback speed</div>
           <div class="popup-item" data-speed="0.5">0.5×</div>
           <div class="popup-item" data-speed="0.75">0.75×</div>
-          <div class="popup-item active" data-speed="1">1× (normal)</div>
+          <div class="popup-item active" data-speed="1">1×</div>
           <div class="popup-item" data-speed="1.25">1.25×</div>
           <div class="popup-item" data-speed="1.5">1.5×</div>
           <div class="popup-item" data-speed="2">2×</div>
@@ -396,22 +443,36 @@
 
       <!-- Sleep timer -->
       <div style="position:relative">
-        <button class="ctrl-btn ctrl-btn-sm" id="btn-sleep" title="Sleep timer">⏱</button>
+        <button class="ctrl-btn ctrl-btn-sm" id="btn-sleep" title="Sleep timer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </button>
         <div class="popup-menu right" id="sleep-menu" style="display:none">
           <div class="popup-label">Sleep timer</div>
           <div class="popup-item" data-sleep="0">Off</div>
-          <div class="popup-item" data-sleep="30">30 minutes</div>
+          <div class="popup-item" data-sleep="30">30 min</div>
           <div class="popup-item" data-sleep="60">1 hour</div>
-          <div class="popup-item" data-sleep="90">90 minutes</div>
+          <div class="popup-item" data-sleep="90">90 min</div>
           <div class="popup-item" data-sleep="120">2 hours</div>
         </div>
       </div>
 
       <!-- PiP -->
-      <button class="ctrl-btn ctrl-btn-sm" id="btn-pip" title="Picture in Picture">⧉</button>
+      <button class="ctrl-btn ctrl-btn-sm" id="btn-pip" title="Picture in Picture">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2"/>
+          <rect x="12" y="11" width="9" height="7" rx="1"/>
+        </svg>
+      </button>
 
       <!-- Fullscreen -->
-      <button class="ctrl-btn ctrl-btn-sm" id="btn-fs" title="Fullscreen (F)">⛶</button>
+      <button class="ctrl-btn ctrl-btn-sm" id="btn-fs" title="Fullscreen (F)">
+        <svg id="fs-icon-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+          <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+        </svg>
+      </button>
 
     </div>
   </div>
