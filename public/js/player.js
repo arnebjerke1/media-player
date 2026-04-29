@@ -165,12 +165,31 @@ function startWebPlayer() {
   setupMediaSession();
 
   // Auto-play
-  video.play().catch(() => { showControls(); });
+  video.play().catch((err) => {
+    showControls();
+    if (err?.name === 'NotAllowedError') {
+      showHint('Click ▶ to start playback');
+    }
+  });
 
   showControls();
 }
 
 // ── Codec error / transcoding / external player fallback ─────────────────────
+
+/**
+ * Start FFmpeg server-side transcoding.
+ * @param {number} seekTo - Start position in seconds (sub-second precision is discarded).
+ */
+function startTranscoding(seekTo) {
+  isTranscoding = true;
+  codecBanner.classList.remove('show');
+  vspinner.style.display = 'block';
+  video.src = `/api/transcode/${mediaId}${seekTo > 0 ? `?start=${Math.floor(seekTo)}` : ''}`;
+  video.load();
+  video.play().catch(() => {});
+}
+
 video.addEventListener('error', () => {
   const err = video.error;
   if (!err) return;
@@ -195,13 +214,8 @@ video.addEventListener('error', () => {
       codecBanner.classList.add('show');
     } else if (ffmpegAvailable) {
       // Auto-transcode via FFmpeg without requiring a manual button click
-      isTranscoding = true;
-      vspinner.style.display = 'block';
       showHint('Transcoding for browser compatibility...');
-      const seekTo = video.currentTime || 0;
-      video.src = `/api/transcode/${mediaId}${seekTo > 0 ? `?start=${Math.floor(seekTo)}` : ''}`;
-      video.load();
-      video.play().catch(() => {});
+      startTranscoding(video.currentTime || 0);
     } else {
       codecMsg.textContent = 'Codec not supported. Install FFmpeg on the server to enable transcoding.';
       if (btnTranscode) btnTranscode.style.display = 'none';
@@ -214,14 +228,7 @@ video.addEventListener('error', () => {
 if (btnTranscode) {
   btnTranscode.addEventListener('click', () => {
     if (!ffmpegAvailable) return;
-    isTranscoding = true;
-    codecBanner.classList.remove('show');
-    vspinner.style.display = 'block';
-
-    const seekTo = video.currentTime || 0;
-    video.src = `/api/transcode/${mediaId}${seekTo > 0 ? `?start=${Math.floor(seekTo)}` : ''}`;
-    video.load();
-    video.play().catch(() => {});
+    startTranscoding(video.currentTime || 0);
   });
 }
 
