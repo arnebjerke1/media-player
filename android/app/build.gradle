@@ -9,7 +9,12 @@ def readAppSecret = { String propName, String envName ->
 }
 
 def escapeBuildConfigString = { String value ->
-    value.replace('\\', '\\\\').replace('"', '\\"')
+    value
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
+        .replace('\n', '\\n')
+        .replace('\r', '\\r')
+        .replace('\t', '\\t')
 }
 
 android {

@@ -101,6 +101,9 @@ export OMDB_API_KEY=your_omdb_key
 
 The Android build bakes them into the app, so posters and ratings are ready on first launch without manual entry.
 
+> [!WARNING]
+> Bundled API keys can be extracted from a shipped APK. Use dedicated low-privilege keys, and prefer runtime configuration if you do not want the keys embedded in the app package.
+
 ### First use
 
 1. Tap **Select Videos** on the setup screen

@@ -1807,7 +1807,7 @@ function renderLibrary(search = '') {
   };
   document.getElementById('all-title').textContent = activeGenreFilter
     ? activeGenreFilter
-    : (sectionTitles[activeSidebarSection] || 'Movies');
+    : (sectionTitles[activeSidebarSection] || 'All');
 
   // Show/hide pick zone (only when no library and in 'all' section)
   const hasMovies = library.length;
@@ -2452,7 +2452,7 @@ video.addEventListener('error',   () => {
   }
   let msg = 'This file could not be played.';
   if (err) {
-    if (err.code === 4) msg = 'This device could not decode this file in the built-in player.';
+    if (err.code === 4) msg = 'This device could not decode this file in the built-in player. You can open it in an external player instead.';
     else msg = `Playback error (code ${err.code}): ${err.message}`;
   }
   alert(msg);
