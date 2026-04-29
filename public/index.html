@@ -91,20 +91,22 @@
     <!-- Step 1: Media Folders -->
     <div class="ob-step" id="ob-step-1">
       <h2>Add your media folder</h2>
-      <p>Enter the full path to your movies folder. Lumière will scan it for video files and automatically look up artwork and info for each film.</p>
+      <p>Browse for your movies/TV folder or type its path. Lumière will scan it and automatically look up artwork and info.</p>
 
       <div class="ob-input-group">
         <label>Folder path</label>
         <div style="display:flex;gap:8px">
           <input id="ob-folder-input" class="ob-input" type="text"
-                 placeholder="e.g. /Users/me/Movies  or  C:\Users\me\Videos" />
+                 placeholder="e.g. /sdcard/Movies  or  C:\Users\me\Videos" />
+          <button class="btn btn-secondary" onclick="openFolderBrowser('ob')" style="white-space:nowrap">Browse…</button>
           <button class="btn btn-secondary" onclick="obAddFolder()" style="white-space:nowrap">Add</button>
         </div>
       </div>
+      <div id="ob-suggestions" style="margin-top:8px"></div>
       <div class="folder-list" id="ob-folder-list"></div>
 
       <div class="ob-actions">
-        <button class="btn btn-primary"   onclick="obNext()">Next →</button>
+        <button class="btn btn-primary"   id="ob-next-btn" onclick="obNext()">Next →</button>
         <button class="btn btn-ghost"     onclick="obBack()">← Back</button>
       </div>
     </div>
@@ -112,7 +114,7 @@
     <!-- Step 2: API Keys -->
     <div class="ob-step" id="ob-step-2">
       <h2>Set up metadata (optional)</h2>
-      <p>Lumière fetches posters, descriptions and ratings automatically. Add free API keys below to enable this — or skip for now and add them later in Settings.</p>
+      <p id="ob-apikey-desc">Lumière fetches posters, descriptions and ratings automatically. Add free API keys below to enable this — or skip for now and add them later in Settings.</p>
 
       <div class="ob-input-group">
         <label>TMDB API Key <span style="color:var(--text3)">(posters, descriptions, IMDb rating)</span></label>
@@ -139,6 +141,22 @@
 
   </div><!-- /.onboarding-card -->
 </div><!-- /#onboarding -->
+
+<!-- ── Folder Browser Modal ────────────────────────────────────────────── -->
+<div id="folder-browser-overlay" class="hidden" onclick="closeFolderBrowser(event)">
+  <div class="folder-browser-card" onclick="event.stopPropagation()">
+    <div class="folder-browser-header">
+      <span class="folder-browser-title">Choose Folder</span>
+      <button class="icon-btn" onclick="closeFolderBrowser()">✕</button>
+    </div>
+    <div class="folder-browser-path" id="fb-current-path"></div>
+    <div class="folder-browser-list" id="fb-list"></div>
+    <div class="folder-browser-actions">
+      <button class="btn btn-primary" id="fb-select-btn" onclick="folderBrowserSelect()">Select This Folder</button>
+      <button class="btn btn-ghost"   onclick="closeFolderBrowser()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
 <div id="sidebar-overlay"></div>
@@ -382,6 +400,7 @@
     <div id="settings-folder-list"></div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <input id="settings-folder-input" class="ob-input" type="text" placeholder="Add folder path…" />
+      <button class="btn btn-secondary" onclick="openFolderBrowser('settings')" style="white-space:nowrap">Browse…</button>
       <button class="btn btn-secondary" onclick="settingsAddFolder()">Add</button>
     </div>
     <button class="btn btn-primary" onclick="triggerScan()" style="margin-top:12px;width:100%">

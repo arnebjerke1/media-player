@@ -116,6 +116,99 @@ app.post('/api/media/:id/refresh', async (req, res) => {
   res.json(parseMedia(db.getMediaById(item.id)));
 });
 
+// ── Directory Browser API ──────────────────────────────────────────────────────
+const BROWSE_SKIP = new Set([
+  'node_modules', 'System Volume Information', '$RECYCLE.BIN',
+  'Windows', 'Program Files', 'Program Files (x86)',
+  'proc', 'sys', 'dev', 'run',
+]);
+
+/** Common media folder suggestions by platform. */
+function getMediaSuggestions() {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  if (process.platform === 'win32') {
+    return [
+      path.join(process.env.USERPROFILE || 'C:\\Users\\User', 'Videos'),
+      path.join(process.env.USERPROFILE || 'C:\\Users\\User', 'Movies'),
+      'D:\\Movies', 'D:\\Videos', 'E:\\Movies',
+    ].filter(p => fs.existsSync(p));
+  }
+  // Android / Linux / macOS
+  const candidates = [
+    '/sdcard/Movies', '/sdcard/Videos', '/sdcard/TV Shows',
+    '/storage/emulated/0/Movies', '/storage/emulated/0/Videos',
+    '/storage/emulated/0/TV Shows',
+    path.join(home, 'Movies'), path.join(home, 'Videos'),
+    path.join(home, 'TV Shows'), '/media', '/mnt',
+  ];
+  return candidates.filter(p => {
+    try { return fs.statSync(p).isDirectory(); } catch (err) {
+      if (err.code !== 'ENOENT' && err.code !== 'EACCES') {
+        console.warn('[browse] Unexpected error checking suggestion', p, err.message);
+      }
+      return false;
+    }
+  });
+}
+
+// Prefixes that should never be browsed (sensitive system directories)
+const BLOCKED_PATH_PREFIXES = process.platform === 'win32' ? [] : [
+  '/etc', '/boot', '/bin', '/sbin', '/lib', '/lib64',
+  '/usr/bin', '/usr/sbin', '/usr/lib',
+];
+
+app.get('/api/browse', (req, res) => {
+  const requestedPath = req.query.path;
+
+  // No path supplied → return suggestions and root
+  if (!requestedPath) {
+    return res.json({
+      current:     null,
+      parent:      null,
+      entries:     [],
+      suggestions: getMediaSuggestions(),
+    });
+  }
+
+  const resolved = path.resolve(requestedPath);
+
+  // Block access to sensitive system directories
+  for (const prefix of BLOCKED_PATH_PREFIXES) {
+    if (resolved === prefix || resolved.startsWith(prefix + '/') || resolved.startsWith(prefix + path.sep)) {
+      return res.status(403).json({ error: 'Access to this directory is not permitted' });
+    }
+  }
+
+  if (!fs.existsSync(resolved)) {
+    return res.status(404).json({ error: 'Directory not found' });
+  }
+
+  let stat;
+  try { stat = fs.statSync(resolved); } catch (err) {
+    return res.status(403).json({ error: err.message });
+  }
+  if (!stat.isDirectory()) {
+    return res.status(400).json({ error: 'Not a directory' });
+  }
+
+  let rawEntries;
+  try {
+    rawEntries = fs.readdirSync(resolved, { withFileTypes: true });
+  } catch (err) {
+    return res.status(403).json({ error: `Cannot read directory: ${err.message}` });
+  }
+
+  const entries = rawEntries
+    .filter(e => e.isDirectory() && !e.name.startsWith('.') && !BROWSE_SKIP.has(e.name))
+    .map(e => ({ name: e.name, path: path.join(resolved, e.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const parentPath = path.dirname(resolved);
+  const parent     = parentPath !== resolved ? parentPath : null;
+
+  res.json({ current: resolved, parent, entries, suggestions: [] });
+});
+
 // ── Scan API ───────────────────────────────────────────────────────────────────
 let scanState = { inProgress: false, total: 0, processed: 0, current: '', errors: [] };
 
@@ -142,7 +235,7 @@ async function runScan() {
       }
 
       const filename = path.basename(filePath);
-      const tvParsed = parseTvFilename(filename);
+      const tvParsed = parseTvFilename(filename, filePath);
       const quality  = detectQuality(filename);
       const subs     = findSubtitles(filePath);
 
