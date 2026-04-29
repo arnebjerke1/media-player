@@ -999,37 +999,85 @@ function openTvShow(showName) {
   const items = allMedia.filter(m => (m.show_name || m.title) === showName && m.media_type === 'tv');
   const seasons = [...new Set(items.map(e => e.season).filter(s => s != null))].sort((a, b) => a - b);
 
-  currentSeason = seasons[0] || null;
+  currentSeason = null; // show season selection first
 
   const tvSec = document.getElementById('tv-section');
+
+  // Build season poster map: prefer season_poster_path, fall back to show poster
+  const seasonPosters = {};
+  for (const ep of items) {
+    const s = ep.season;
+    if (s == null) continue;
+    if (!seasonPosters[s]) {
+      seasonPosters[s] = ep.season_poster_path || ep.poster_path || null;
+    } else if (!seasonPosters[s] && (ep.season_poster_path || ep.poster_path)) {
+      seasonPosters[s] = ep.season_poster_path || ep.poster_path;
+    }
+  }
+
+  // Show-level poster/backdrop from first available item
+  const showItem   = items[0] || {};
+  const showPoster = showItem.poster_path || null;
+
   tvSec.innerHTML = `
     <div class="tv-season-header">
       <button class="tv-back-btn" id="tv-back-btn">← All Shows</button>
       <span class="section-title">${esc(showName)}</span>
     </div>
-    ${seasons.length > 1 ? `
-    <div class="season-tabs" id="season-tabs">
-      ${seasons.map(s => `<button class="season-tab${s === currentSeason ? ' active' : ''}" data-season="${s}">Season ${s}</button>`).join('')}
-    </div>` : ''}
-    <div class="episode-list" id="episode-list"></div>`;
+    <div class="tv-season-grid" id="tv-season-grid">
+      ${seasons.map(s => {
+        const poster = seasonPosters[s];
+        const epCount = items.filter(e => e.season === s).length;
+        const img = poster
+          ? `<img class="tv-season-poster" src="${esc(poster)}" alt="Season ${s}" loading="lazy" />`
+          : `<div class="tv-season-poster tv-season-poster-placeholder"><span style="font-size:28px">📺</span></div>`;
+        return `
+          <div class="tv-season-card" data-season="${s}">
+            ${img}
+            <div class="tv-season-info">
+              <div class="tv-season-label">Season ${s}</div>
+              <div class="tv-season-ep-count">${epCount} episode${epCount !== 1 ? 's' : ''}</div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+    <div class="episode-list" id="episode-list" style="display:none"></div>`;
 
   document.getElementById('tv-back-btn').addEventListener('click', () => {
     tvSec.innerHTML = '<div class="section-header"><span class="section-title">TV Shows</span><span class="section-count" id="tv-count"></span></div><div id="tv-shows-grid" class="tv-shows-grid"></div>';
     renderTvShows();
   });
 
-  document.querySelectorAll('.season-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      currentSeason = parseInt(tab.dataset.season, 10);
-      document.querySelectorAll('.season-tab').forEach(t => t.classList.toggle('active', t === tab));
-      renderEpisodeList(items, currentSeason);
+  document.querySelectorAll('.tv-season-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const s = parseInt(card.dataset.season, 10);
+      currentSeason = s;
+      document.querySelectorAll('.tv-season-card').forEach(c => c.classList.toggle('active', c === card));
+      document.getElementById('tv-season-grid').style.display = 'none';
+      const epList = document.getElementById('episode-list');
+      epList.style.display = '';
+
+      // Add back-to-seasons button
+      if (!document.getElementById('btn-back-seasons')) {
+        const backBtn = document.createElement('button');
+        backBtn.id = 'btn-back-seasons';
+        backBtn.className = 'tv-back-btn';
+        backBtn.style.marginBottom = '12px';
+        backBtn.textContent = `← All Seasons`;
+        backBtn.addEventListener('click', () => {
+          document.getElementById('tv-season-grid').style.display = '';
+          epList.style.display = 'none';
+          backBtn.remove();
+        });
+        epList.parentNode.insertBefore(backBtn, epList);
+      }
+
+      renderEpisodeList(items, s, seasonPosters[s]);
     });
   });
-
-  renderEpisodeList(items, currentSeason);
 }
 
-function renderEpisodeList(items, season) {
+function renderEpisodeList(items, season, seasonPoster) {
   const episodes = items
     .filter(e => season == null || e.season === season)
     .sort((a, b) => (a.episode || 0) - (b.episode || 0));
@@ -1042,14 +1090,22 @@ function renderEpisodeList(items, season) {
     const epNum = ep.episode != null ? ep.episode : '?';
     const progress = pct > 0 && pct < 95
       ? `<div class="episode-progress"><div class="episode-progress-bar" style="width:${pct}%"></div></div>` : '';
+    const thumb = (ep.season_poster_path || seasonPoster)
+      ? `<img class="episode-thumb" src="${esc(ep.season_poster_path || seasonPoster)}" alt="" loading="lazy" />`
+      : `<div class="episode-thumb episode-thumb-placeholder"><span>${epNum}</span></div>`;
     return `
       <div class="episode-card" data-id="${ep.id}">
-        <div class="episode-num">${epNum}</div>
+        ${thumb}
         <div class="episode-info">
-          <div class="episode-title">${esc(ep.title)}</div>
+          <div class="episode-title-row">
+            <span class="episode-num-badge">E${epNum}</span>
+            <span class="episode-title">${esc(ep.title)}</span>
+          </div>
           ${progress}
         </div>
-        <button class="episode-play-btn" data-id="${ep.id}" title="Play">▶</button>
+        <button class="episode-play-btn" data-id="${ep.id}" title="Play">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </button>
       </div>`;
   }).join('');
 
