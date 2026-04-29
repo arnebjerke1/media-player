@@ -351,12 +351,15 @@ a{color:#e50914;text-decoration:none}img{display:block}
   pointer-events:none;text-shadow:0 2px 8px rgba(0,0,0,.8);
 }
 .skip-ind.show{opacity:1}
-#play-indicator{
-  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:58px;opacity:0;pointer-events:none;
-  text-shadow:0 4px 16px rgba(0,0,0,.8);transition:opacity .2s;
+#hdr-indicator{
+  position:absolute;top:calc(env(safe-area-inset-top, 0px) + 70px);right:20px;
+  z-index:12;padding:8px 14px;border-radius:999px;
+  background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);
+  backdrop-filter:blur(10px);font-size:12px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;opacity:0;pointer-events:none;
+  transform:translateY(-8px);transition:opacity .2s,transform .2s;
 }
-#play-indicator.flash{opacity:1}
+#hdr-indicator.show{opacity:1;transform:translateY(0)}
 
 #ctrl-bottom{
   background:linear-gradient(to top,rgba(0,0,0,.9) 0%,transparent 100%);
@@ -651,7 +654,8 @@ a{color:#e50914;text-decoration:none}img{display:block}
     <button class="icon-btn" id="sidebar-close" aria-label="Close sidebar">✕</button>
   </div>
   <nav class="sidebar-nav" id="sidebar-nav">
-    <button class="sidebar-item active" data-section="all">🎬 All Movies</button>
+    <button class="sidebar-item active" data-section="all">🎬 All</button>
+    <button class="sidebar-item" data-section="movies">🎞 Movies</button>
     <button class="sidebar-item" data-section="tv">📺 TV Shows</button>
     <button class="sidebar-item" data-section="continue">▶ Continue Watching</button>
     <button class="sidebar-item" data-section="favorites">❤ Favourites</button>
@@ -668,7 +672,7 @@ a{color:#e50914;text-decoration:none}img{display:block}
 <div id="screen-setup" class="screen">
   <div class="setup-card">
     <div class="setup-logo">Lumi<span>ère</span></div>
-    <p class="setup-sub">Enter your API keys to enable movie info, posters and ratings.</p>
+    <p class="setup-sub">The Android app can ship with TMDB and OMDB keys already built in. Use this screen only if you want to override them.</p>
 
     <div class="setup-group">
       <div class="setup-label">TMDB API Key <span style="font-weight:400;text-transform:none;letter-spacing:0">(posters &amp; info)</span></div>
@@ -726,7 +730,7 @@ a{color:#e50914;text-decoration:none}img{display:block}
   <!-- All Movies -->
   <div id="all-section">
     <div class="section-title" style="padding:0 20px">
-      <span id="all-title">All Movies</span>
+      <span id="all-title">All</span>
       <span id="all-count" style="font-size:11px;color:var(--text3);font-weight:400"></span>
     </div>
     <div class="media-grid" id="media-grid" style="padding:0 20px"></div>
@@ -838,7 +842,7 @@ a{color:#e50914;text-decoration:none}img{display:block}
 
   <div id="sleep-pill">⏱ <span id="sleep-countdown"></span></div>
 
-  <div id="play-indicator"></div>
+  <div id="hdr-indicator"></div>
 
   <div id="controls">
     <div id="ctrl-top">
@@ -934,12 +938,14 @@ let library       = [];   // array of movie objects
 let filteredLib   = [];
 let currentMovie  = null;
 let scanCancelled = false;
+let nativeKeys    = { tmdb: '', omdb: '' };
 let keys          = { tmdb: '', omdb: '' };
 let activeSidebarSection = 'all';
 let activeGenreFilter    = '';
 let currentTvShow        = null;
 let currentSeason        = null;
 let dirHandle     = null;  // FileSystemDirectoryHandle (File System Access API)
+let autoFolderPrompted = false;
 
 const PROGRESS_KEY      = 'lum_progress';   // localStorage: { filename -> position }
 const LIBRARY_KEY       = 'lum_library';
@@ -956,6 +962,34 @@ const IS_CAPACITOR = !!(
 // File System Access API is only usable in a real browser context, not inside
 // Android WebView (which doesn't expose showDirectoryPicker).
 const HAS_FS_API = !IS_CAPACITOR && typeof window.showDirectoryPicker === 'function';
+
+function mergeConfiguredKeys(defaults = {}, saved = {}) {
+  return {
+    tmdb: (saved.tmdb || defaults.tmdb || '').trim(),
+    omdb: (saved.omdb || defaults.omdb || '').trim(),
+  };
+}
+
+function getVideoFlags(filename = '') {
+  const lower = filename.toLowerCase();
+  const isDolbyVision = /\b(dolby.?vision|dovi|dv)\b/.test(lower);
+  const isHdr = isDolbyVision || /\b(hdr10\+?|hdr|hlg)\b/.test(lower);
+  return {
+    is4k: /\b(4k|2160p|uhd)\b/.test(lower),
+    isHdr,
+    isDolbyVision,
+  };
+}
+
+function normalizeLibraryItem(item) {
+  const flags = getVideoFlags(item.filename || '');
+  return {
+    ...item,
+    is4k: item.is4k ?? flags.is4k,
+    isHdr: item.isHdr ?? flags.isHdr,
+    isDolbyVision: item.isDolbyVision ?? flags.isDolbyVision,
+  };
+}
 
 // ── IndexedDB — persist directory handle across page reloads ─────────────────
 const IDB_NAME  = 'lumiere_handles';
@@ -1088,14 +1122,30 @@ async function autoScanDirectory() {
     }, Math.max(0, minSplash - elapsed));
   }
 
-  const saved = safeLS(KEYS_KEY);
-  if (saved) keys = saved;
+  const saved = safeLS(KEYS_KEY) || {};
+  if (IS_CAPACITOR) {
+    try {
+      const appConfig = await window.Capacitor.Plugins.FolderPicker.getAppConfig();
+      nativeKeys = {
+        tmdb: (appConfig?.tmdbApiKey || '').trim(),
+        omdb: (appConfig?.omdbApiKey || '').trim(),
+      };
+    } catch (err) {
+      console.warn('[boot] Could not load bundled app config:', err);
+    }
+  }
+  keys = mergeConfiguredKeys(nativeKeys, saved);
+  if (keys.tmdb || keys.omdb) saveLS(KEYS_KEY, keys);
+  const setupTmdb = document.getElementById('setup-tmdb');
+  const setupOmdb = document.getElementById('setup-omdb');
+  if (setupTmdb) setupTmdb.value = keys.tmdb || '';
+  if (setupOmdb) setupOmdb.value = keys.omdb || '';
 
   const savedLib = safeLS(LIBRARY_KEY);
 
   showScreen('library');
   if (savedLib && savedLib.length) {
-    library = savedLib;
+    library = savedLib.map(normalizeLibraryItem);
     renderLibrary();
     renderSidebarGenres();
   }
@@ -1128,6 +1178,9 @@ async function autoScanDirectory() {
         }
       } else if (result && result.permissionLapsed) {
         showGrantBanner(true);
+      } else if (!library.length && !autoFolderPrompted) {
+        autoFolderPrompted = true;
+        setTimeout(() => _pickFolderWithCapacitor(true), 250);
       }
     } catch (err) {
       console.warn('[boot] Could not restore native folder:', err);
@@ -1293,11 +1346,14 @@ function pickFolder() {
 // Android path: Storage Access Framework via the native FolderPicker plugin.
 // ACTION_OPEN_DOCUMENT_TREE shows the system folder picker and returns a
 // persistent tree URI that survives app restarts without re-prompting the user.
-async function _pickFolderWithCapacitor() {
+async function _pickFolderWithCapacitor(isAutomatic = false) {
   try {
     const result = await window.Capacitor.Plugins.FolderPicker.pickFolder();
     const files = result && result.files;
-    if (!files?.length) { alert('No video files found in the selected folder.'); return; }
+    if (!files?.length) {
+      if (!isAutomatic) alert('No video files found in the selected folder.');
+      return;
+    }
     showGrantBanner(false);
     await scanFiles(files);
   } catch (err) {
@@ -1387,7 +1443,7 @@ async function scanFiles(files) {
       continue;
     }
 
-    const is4k = /4k|2160p|uhd/i.test(file.name);
+    const { is4k, isHdr, isDolbyVision } = getVideoFlags(file.name);
 
     if (isTv) {
       // TV show handling — enrich with TMDB if key available, otherwise use parsed data
@@ -1423,6 +1479,8 @@ async function scanFiles(files) {
             favourite:   false,
             watchlisted: false,
             is4k,
+            isHdr,
+            isDolbyVision,
           });
           continue;
         }
@@ -1456,6 +1514,8 @@ async function scanFiles(files) {
         favourite:   false,
         watchlisted: false,
         is4k,
+        isHdr,
+        isDolbyVision,
       });
       continue;
     }
@@ -1496,6 +1556,8 @@ async function scanFiles(files) {
           favourite:   false,
           watchlisted: false,
           is4k,
+          isHdr,
+          isDolbyVision,
         });
         continue;
       }
@@ -1527,6 +1589,8 @@ async function scanFiles(files) {
       favourite:   false,
       watchlisted: false,
       is4k,
+      isHdr,
+      isDolbyVision,
     });
   }
 
@@ -1639,6 +1703,11 @@ searchInput.addEventListener('input', () => renderLibrary(searchInput.value));
 function getFilteredItems() {
   let items = library;
   switch (activeSidebarSection) {
+    case 'all':
+      break;
+    case 'movies':
+      items = items.filter(m => m.media_type !== 'tv');
+      break;
     case 'continue': {
       const prog = safeLS(PROGRESS_KEY) || {};
       items = items.filter(m => {
@@ -1649,7 +1718,7 @@ function getFilteredItems() {
     }
     case 'favorites': items = items.filter(m => m.favourite); break;
     case 'watchlist':  items = items.filter(m => m.watchlisted); break;
-    case '4k':         items = items.filter(m => m.is4k); break;
+    case '4k':         items = items.filter(m => m.is4k || m.isHdr || m.isDolbyVision); break;
     default:           items = items.filter(m => m.media_type !== 'tv'); break;
   }
   if (activeGenreFilter) {
@@ -1658,17 +1727,79 @@ function getFilteredItems() {
   return items;
 }
 
+function buildAllViewItems(items) {
+  const groupedShows = new Map();
+  const combined = [];
+
+  for (const item of items) {
+    if (item.media_type !== 'tv') {
+      combined.push(item);
+      continue;
+    }
+
+    const key = item.show_name || item.title;
+    if (!key) continue;
+
+    if (!groupedShows.has(key)) {
+      groupedShows.set(key, {
+        card_type: 'tv-show',
+        title: key,
+        show_name: key,
+        poster: item.poster || null,
+        backdrop: item.backdrop || null,
+        backdropFull: item.backdropFull || null,
+        year: item.year || null,
+        genres: item.genres || [],
+        is4k: !!item.is4k,
+        isHdr: !!item.isHdr,
+        isDolbyVision: !!item.isDolbyVision,
+        episodes: [],
+      });
+    }
+
+    const show = groupedShows.get(key);
+    show.episodes.push(item);
+    if (!show.poster && item.poster) show.poster = item.poster;
+    if (!show.backdrop && item.backdrop) show.backdrop = item.backdrop;
+    if (!show.backdropFull && item.backdropFull) show.backdropFull = item.backdropFull;
+    if (!show.year && item.year) show.year = item.year;
+    if ((!show.genres || !show.genres.length) && item.genres?.length) show.genres = item.genres;
+    show.is4k ||= !!item.is4k;
+    show.isHdr ||= !!item.isHdr;
+    show.isDolbyVision ||= !!item.isDolbyVision;
+  }
+
+  combined.push(...groupedShows.values());
+  return combined.sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' }));
+}
+
+function buildCardBadges(item) {
+  const badges = [];
+  if (item.card_type === 'tv-show') badges.push('TV');
+  if (item.is4k) badges.push('4K');
+  if (item.isDolbyVision) badges.push('Dolby Vision');
+  else if (item.isHdr) badges.push('HDR');
+  return badges.length ? `<div class="card-ratings">${badges.map(b => `<span class="rating-badge">${esc(b)}</span>`).join('')}</div>` : '';
+}
+
 function renderLibrary(search = '') {
   const q = search.toLowerCase().trim();
   const base = getFilteredItems();
-  filteredLib = q ? base.filter(m => m.title.toLowerCase().includes(q)) : base;
+  filteredLib = q ? base.filter(m =>
+    (m.title || '').toLowerCase().includes(q) ||
+    (m.show_name || '').toLowerCase().includes(q)
+  ) : base;
+  const itemsToRender = activeSidebarSection === 'all'
+    ? buildAllViewItems(filteredLib)
+    : filteredLib;
 
   const grid   = document.getElementById('media-grid');
   const allCnt = document.getElementById('all-count');
 
   // Update section title
   const sectionTitles = {
-    all: activeGenreFilter || 'All Movies',
+    all: 'All',
+    movies: 'Movies',
     continue: 'Continue Watching',
     favorites: 'Favourites',
     watchlist: 'Watchlist',
@@ -1676,23 +1807,23 @@ function renderLibrary(search = '') {
   };
   document.getElementById('all-title').textContent = activeGenreFilter
     ? activeGenreFilter
-    : (sectionTitles[activeSidebarSection] || 'All Movies');
+    : (sectionTitles[activeSidebarSection] || 'Movies');
 
   // Show/hide pick zone (only when no library and in 'all' section)
-  const hasMovies = library.filter(m => m.media_type !== 'tv').length;
+  const hasMovies = library.length;
   document.getElementById('pick-zone').style.display =
     (activeSidebarSection === 'all' && !hasMovies && !activeGenreFilter) ? '' : 'none';
 
-  allCnt.textContent = filteredLib.length ? `${filteredLib.length} film${filteredLib.length !== 1 ? 's' : ''}` : '';
+  allCnt.textContent = itemsToRender.length ? `${itemsToRender.length} item${itemsToRender.length !== 1 ? 's' : ''}` : '';
 
   // Continue watching
   renderContinue();
 
   // Grid
   grid.innerHTML = '';
-  if (!filteredLib.length) {
+  if (!itemsToRender.length) {
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-      <h3>${library.length ? 'No results' : 'No movies loaded yet'}</h3>
+      <h3>${library.length ? 'No results' : 'No media loaded yet'}</h3>
       <p>${library.length ? 'Try a different search term.' : 'Pick a folder to get started.'}</p>
     </div>`;
     return;
@@ -1700,9 +1831,10 @@ function renderLibrary(search = '') {
 
   const isLandscape = window.matchMedia('(orientation:landscape)').matches;
 
-  for (const m of filteredLib) {
-    const progress = getProgress(m.filename);
-    const pct = (m.runtime && progress)
+  for (const m of itemsToRender) {
+    const isTvShowCard = m.card_type === 'tv-show';
+    const progress = isTvShowCard ? 0 : getProgress(m.filename);
+    const pct = (!isTvShowCard && m.runtime && progress)
       ? Math.min(100, Math.round((progress / (m.runtime * 60)) * 100))
       : 0;
 
@@ -1710,32 +1842,50 @@ function renderLibrary(search = '') {
       ? (m.backdrop || m.poster || '')
       : (m.poster || m.backdrop || '');
 
+    const metaParts = [];
+    if (m.year) metaParts.push(`<span>${esc(m.year)}</span>`);
+    if (isTvShowCard) {
+      const seasonCount = new Set((m.episodes || []).map(ep => ep.season).filter(s => s != null)).size;
+      const episodeCount = (m.episodes || []).length;
+      if (seasonCount) metaParts.push(`<span>${seasonCount} season${seasonCount !== 1 ? 's' : ''}</span>`);
+      if (episodeCount) metaParts.push(`<span>${episodeCount} ep${episodeCount !== 1 ? 's' : ''}</span>`);
+    } else {
+      if (m.runtime) metaParts.push(`<span>${m.runtime} min</span>`);
+      if (m.certification) metaParts.push(`<span style="border:1px solid rgba(255,255,255,.2);padding:0 3px;border-radius:3px;font-size:9px">${esc(m.certification)}</span>`);
+    }
+
     const card = document.createElement('div');
     card.className = 'media-card fade-in';
     card.innerHTML = `
       <div class="card-poster">
         ${imgSrc
           ? `<img src="${imgSrc}" alt="${esc(m.title)}" loading="lazy" />`
-          : `<div class="no-poster">🎬<div style="font-size:11px;color:var(--text3);padding:4px 8px;text-align:center">${esc(m.title)}</div></div>`
+          : `<div class="no-poster">${isTvShowCard ? '📺' : '🎬'}<div style="font-size:11px;color:var(--text3);padding:4px 8px;text-align:center">${esc(m.title)}</div></div>`
         }
       </div>
       <div class="card-info">
         <div class="card-title">${esc(m.title)}</div>
-        <div class="card-meta">
-          ${m.year ? `<span>${m.year}</span>` : ''}
-          ${m.runtime ? `<span>${m.runtime} min</span>` : ''}
-          ${m.certification ? `<span style="border:1px solid rgba(255,255,255,.2);padding:0 3px;border-radius:3px;font-size:9px">${esc(m.certification)}</span>` : ''}
-        </div>
-        ${(m.imdbRating || m.rtScore) ? `
+        <div class="card-meta">${metaParts.join('')}</div>
+        ${!isTvShowCard && (m.imdbRating || m.rtScore) ? `
         <div class="card-ratings">
           ${m.imdbRating ? `<span class="rating-badge rating-imdb">⭐ ${m.imdbRating}</span>` : ''}
           ${m.rtScore ? rtBadge(m.rtScore, 'card') : ''}
-        </div>` : ''}
+        </div>` : buildCardBadges(m)}
       </div>
-      ${pct > 2 ? `<div class="progress-bar-card"><div class="progress-bar-card-fill" style="width:${pct}%"></div></div>` : ''}
-      ${pct >= 90 ? `<div class="watched-badge">✓</div>` : ''}
+      ${!isTvShowCard && pct > 2 ? `<div class="progress-bar-card"><div class="progress-bar-card-fill" style="width:${pct}%"></div></div>` : ''}
+      ${!isTvShowCard && pct >= 90 ? `<div class="watched-badge">✓</div>` : ''}
     `;
-    card.addEventListener('click', () => openModal(m));
+    card.addEventListener('click', () => {
+      if (isTvShowCard) {
+        activeSidebarSection = 'tv';
+        document.querySelectorAll('.sidebar-item').forEach(b =>
+          b.classList.toggle('active', b.dataset.section === 'tv'));
+        showTvSection();
+        openTvShow(m.show_name);
+        return;
+      }
+      openModal(m);
+    });
     grid.appendChild(card);
   }
 }
@@ -1995,11 +2145,12 @@ const titleEl     = document.getElementById('player-title');
 const subDisp     = document.getElementById('sub-display');
 const sleepPill   = document.getElementById('sleep-pill');
 const sleepCount  = document.getElementById('sleep-countdown');
-const playInd     = document.getElementById('play-indicator');
+const hdrInd      = document.getElementById('hdr-indicator');
 const spinner     = document.getElementById('spinner');
 const speedMenu   = document.getElementById('speed-menu');
 const sleepMenu   = document.getElementById('sleep-menu');
 const subsMenu    = document.getElementById('subs-menu');
+let hdrIndicatorTimer = null;
 
 // Map file extensions to MIME types so Android WebView can identify the
 // stream correctly and route it to the right decoder (including audio tracks).
@@ -2041,6 +2192,30 @@ function setVideoSource(blobUrl, filename) {
   video.load();
 }
 
+function showPlaybackBadge() {
+  clearTimeout(hdrIndicatorTimer);
+  hdrInd.classList.remove('show');
+  if (!currentMovie || (!currentMovie.isHdr && !currentMovie.isDolbyVision)) return;
+  hdrInd.textContent = currentMovie.isDolbyVision ? 'Dolby Vision' : 'HDR';
+  requestAnimationFrame(() => hdrInd.classList.add('show'));
+  hdrIndicatorTimer = setTimeout(() => hdrInd.classList.remove('show'), 2000);
+}
+
+async function openInExternalPlayer(movie = currentMovie) {
+  if (!IS_CAPACITOR || !movie?.contentUri) return false;
+  try {
+    await window.Capacitor.Plugins.FolderPicker.openExternalPlayer({
+      uri: movie.contentUri,
+      mimeType: getVideoMimeType(movie.filename),
+      title: movie.title || movie.filename,
+    });
+    return true;
+  } catch (err) {
+    console.warn('[player] Could not open external player:', err);
+    return false;
+  }
+}
+
 function startPlayer(m) {
   titleEl.textContent  = m.title || '';
   document.title       = m.title ? `${m.title} — Lumière` : 'Lumière';
@@ -2062,6 +2237,7 @@ function startPlayer(m) {
   }
 
   showScreen('player');
+  video.addEventListener('playing', showPlaybackBadge, { once: true });
   video.play().catch(() => {});
   showControls();
 }
@@ -2075,6 +2251,8 @@ function exitPlayer() {
   clearInterval(subIntervalId);
   clearTimeout(sleepTimer);
   clearInterval(sleepTickInterval);
+  clearTimeout(hdrIndicatorTimer);
+  hdrInd.classList.remove('show');
   // Clear source elements and src
   clearVideoSources();
   video.src = '';
@@ -2158,7 +2336,7 @@ setupTapZone(
 setupTapZone(
   document.getElementById('tap-center'),
   toggleControls,
-  () => { if (video.paused) { video.play(); } else { video.pause(); } flashPlayInd(video.paused ? '⏸' : '▶'); showControls(); }
+  () => { if (video.paused) { video.play(); } else { video.pause(); } showControls(); }
 );
 setupTapZone(
   document.getElementById('tap-right'),
@@ -2166,11 +2344,6 @@ setupTapZone(
   () => { video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10); flashSkip('r'); showControls(); }
 );
 
-function flashPlayInd(icon) {
-  playInd.textContent = icon;
-  playInd.classList.add('flash');
-  setTimeout(() => playInd.classList.remove('flash'), 600);
-}
 function flashSkip(side) {
   const el = document.getElementById(side === 'l' ? 'skip-l-ind' : 'skip-r-ind');
   el.classList.add('show');
@@ -2267,9 +2440,19 @@ video.addEventListener('canplay', () => { spinner.style.display = 'none'; });
 video.addEventListener('error',   () => {
   spinner.style.display = 'none';
   const err = video.error;
+  if (err?.code === 4 && currentMovie?.contentUri && IS_CAPACITOR) {
+    const openExternally = confirm('This file needs your device video player for full codec support. Open it there now?');
+    if (openExternally) {
+      openInExternalPlayer(currentMovie).then(opened => {
+        if (opened) exitPlayer();
+        else alert('No compatible video app was found on this device.');
+      });
+    }
+    return;
+  }
   let msg = 'This file could not be played.';
   if (err) {
-    if (err.code === 4) msg = 'Unsupported format or codec. Try converting the file to MP4/H.264.';
+    if (err.code === 4) msg = 'This device could not decode this file in the built-in player.';
     else msg = `Playback error (code ${err.code}): ${err.message}`;
   }
   alert(msg);

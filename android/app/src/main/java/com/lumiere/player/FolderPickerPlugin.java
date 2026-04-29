@@ -1,6 +1,7 @@
 package com.lumiere.player;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -116,14 +117,7 @@ public class FolderPickerPlugin extends Plugin {
         Uri treeUri = Uri.parse(uriStr);
 
         // Verify the persisted permission is still active.
-        boolean hasPermission = false;
-        List<UriPermission> perms = getContext().getContentResolver().getPersistedUriPermissions();
-        for (UriPermission p : perms) {
-            if (p.getUri().equals(treeUri) && p.isReadPermission()) {
-                hasPermission = true;
-                break;
-            }
-        }
+        boolean hasPermission = hasReadPermission(treeUri);
 
         if (!hasPermission) {
             JSObject ret = new JSObject();
@@ -139,7 +133,67 @@ public class FolderPickerPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    @PluginMethod
+    public void getAppConfig(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("tmdbApiKey", BuildConfig.LUMIERE_TMDB_API_KEY);
+        ret.put("omdbApiKey", BuildConfig.LUMIERE_OMDB_API_KEY);
+        ret.put("hasPersistedFolder", hasPersistedFolder());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openExternalPlayer(PluginCall call) {
+        String uriStr = call.getString("uri");
+        if (uriStr == null || uriStr.trim().isEmpty()) {
+            call.reject("MISSING_URI");
+            return;
+        }
+
+        String mimeType = call.getString("mimeType", "video/*");
+        String title = call.getString("title");
+        Uri mediaUri = Uri.parse(uriStr);
+
+        Intent intent = new Intent(Intent.ACTION_VIEW)
+            .setDataAndType(mediaUri, mimeType)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        if (title != null && !title.trim().isEmpty()) {
+            intent.putExtra(Intent.EXTRA_TITLE, title);
+        }
+
+        Intent chooser = Intent.createChooser(intent, "Open video with");
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        try {
+            getActivity().startActivity(chooser);
+            call.resolve();
+        } catch (ActivityNotFoundException err) {
+            call.reject("NO_PLAYER_FOUND", err);
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private boolean hasPersistedFolder() {
+        String uriStr = getContext()
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_TREE_URI, null);
+        if (uriStr == null) return false;
+        return hasReadPermission(Uri.parse(uriStr));
+    }
+
+    private boolean hasReadPermission(Uri treeUri) {
+        List<UriPermission> perms = getContext().getContentResolver().getPersistedUriPermissions();
+        for (UriPermission p : perms) {
+            if (p.getUri().equals(treeUri) && p.isReadPermission()) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private JSArray enumerateVideoFiles(Uri treeUri) {
         JSArray result = new JSArray();
