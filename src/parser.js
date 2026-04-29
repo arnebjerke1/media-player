@@ -2,8 +2,8 @@
 
 const path = require('path');
 
-// TV show episode pattern: Show.Name.S01E02.Episode.Title or S01E02E03 etc.
-const TV_RE  = /^(.*?)\s*[Ss](\d{1,2})[Ee](\d{1,2})/;
+// TV show episode pattern: Show.Name.S01E02 or Show.Name.S01 E02 (space between season/episode)
+const TV_RE  = /^(.*?)\s*[Ss](\d{1,2})\s*[Ee](\d{1,2})/;
 // Alternative: Show.Name.1x02 (season x episode)
 const TV_RE2 = /^(.*?)\s*(\d{1,2})x(\d{1,3})\b/i;
 

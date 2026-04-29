@@ -555,9 +555,15 @@ async function openModal(id) {
 
   // Poster
   const poster = document.getElementById('modal-poster');
-  poster.src = m.poster_path || '';
-  poster.alt = m.title;
-  poster.onerror = () => { poster.src = ''; };
+  if (m.poster_path) {
+    poster.src     = m.poster_path;
+    poster.alt     = m.title;
+    poster.style.display = '';
+    poster.onerror = () => { poster.style.display = 'none'; };
+  } else {
+    poster.src           = '';
+    poster.style.display = 'none';
+  }
 
   document.getElementById('modal-title').textContent   = m.title;
   document.getElementById('modal-tagline').textContent = m.tagline || '';
@@ -774,11 +780,25 @@ function settingsRemoveFolder(i) {
 }
 
 async function saveSettings() {
+  const hadTmdb = !!config.tmdbApiKey;
+  const hadOmdb = !!config.omdbApiKey;
+
   config.tmdbApiKey = document.getElementById('settings-tmdb').value.trim();
   config.omdbApiKey = document.getElementById('settings-omdb').value.trim();
   await api('/api/config', { method: 'POST', body: JSON.stringify(config) });
-  showToast('Settings saved!', 'success');
+  config = await api('/api/config');
+
+  const newTmdb = !hadTmdb && !!config.tmdbApiKey;
+  const newOmdb = !hadOmdb && !!config.omdbApiKey;
+
   closeSettings();
+
+  if (newTmdb || newOmdb) {
+    showToast('API keys saved — scanning library for missing metadata…', 'success');
+    triggerScan();
+  } else {
+    showToast('Settings saved!', 'success');
+  }
 }
 
 // Theme pills in settings

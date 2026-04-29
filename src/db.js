@@ -79,6 +79,7 @@ function init() {
     'ALTER TABLE media ADD COLUMN season INTEGER',
     'ALTER TABLE media ADD COLUMN episode INTEGER',
     'ALTER TABLE media ADD COLUMN season_poster_path TEXT',
+    'ALTER TABLE media ADD COLUMN tvmaze_id INTEGER',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -136,14 +137,14 @@ function saveMedia(item) {
   return db.run(`
     INSERT OR REPLACE INTO media
       (path, filename, media_type, title, show_name, season, episode,
-       year, tmdb_id, imdb_id, overview, tagline,
+       year, tmdb_id, tvmaze_id, imdb_id, overview, tagline,
        poster_path, backdrop_path, season_poster_path, genres, rating, rt_score, runtime,
        language, cast, director, subtitles,
        quality, hdr, dolby_vision, atmos, certification,
        added_at, last_updated)
     VALUES
       (@path, @filename, @mediaType, @title, @showName, @season, @episode,
-       @year, @tmdbId, @imdbId, @overview, @tagline,
+       @year, @tmdbId, @tvmazeId, @imdbId, @overview, @tagline,
        @posterPath, @backdropPath, @seasonPosterPath, @genres, @rating, @rtScore, @runtime,
        @language, @cast, @director, @subtitles,
        @quality, @hdr, @dolbyVision, @atmos, @certification,
@@ -153,13 +154,15 @@ function saveMedia(item) {
 
 function updateMedia(id, u) {
   const map = {
-    title: u.title, year: u.year, tmdb_id: u.tmdbId, imdb_id: u.imdbId,
+    title: u.title, year: u.year, tmdb_id: u.tmdbId, tvmaze_id: u.tvMazeId, imdb_id: u.imdbId,
     overview: u.overview, tagline: u.tagline,
     poster_path: u.posterPath, backdrop_path: u.backdropPath,
     season_poster_path: u.seasonPosterPath,
     genres: u.genres, rating: u.rating, rt_score: u.rtScore,
     runtime: u.runtime, language: u.language, cast: u.cast, director: u.director,
     certification: u.certification,
+    media_type: u.mediaType, show_name: u.showName,
+    season: u.season, episode: u.episode,
   };
   const fields = Object.entries(map).filter(([, v]) => v !== undefined);
   if (!fields.length) return;
