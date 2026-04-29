@@ -115,9 +115,37 @@ function showOnboarding() {
   const omdbInput = document.getElementById('ob-omdb-key');
   if (tmdbInput && !tmdbInput.value && config.tmdbApiKey) tmdbInput.value = config.tmdbApiKey;
   if (omdbInput && !omdbInput.value && config.omdbApiKey) omdbInput.value = config.omdbApiKey;
+
+  // If API keys are already configured, show that step 2 will be skipped
+  if (config.tmdbApiKey) {
+    const desc = document.getElementById('ob-apikey-desc');
+    if (desc) desc.textContent = 'API keys are already configured on the server — metadata will be fetched automatically. You can update them here if needed.';
+    const nextBtn = document.getElementById('ob-next-btn');
+    if (nextBtn) nextBtn.textContent = 'Finish & Scan Library';
+  }
+
+  // Load folder suggestions for step 1
+  loadFolderSuggestions();
 }
 function hideOnboarding() {
   document.getElementById('onboarding').classList.add('hidden');
+}
+
+async function loadFolderSuggestions() {
+  try {
+    const data = await api('/api/browse');
+    const container = document.getElementById('ob-suggestions');
+    if (!container || !data.suggestions?.length) return;
+    container.innerHTML = '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Suggested folders:</div>'
+      + data.suggestions.map(s => `
+        <button class="folder-suggestion-btn" onclick="obUseSuggestion('${esc(s)}')">${esc(s)}</button>
+      `).join('');
+  } catch { /* non-fatal */ }
+}
+
+function obUseSuggestion(folderPath) {
+  document.getElementById('ob-folder-input').value = folderPath;
+  obAddFolder();
 }
 
 function updateStepDots() {
@@ -139,6 +167,12 @@ function obNext() {
     // Auto-add any folder path that was typed but not yet added
     const input = document.getElementById('ob-folder-input');
     if (input && input.value.trim()) obAddFolder();
+
+    // If API keys are already set via .env, skip step 2 and finish immediately
+    if (config.tmdbApiKey) {
+      obFinish();
+      return;
+    }
   }
   obStep = Math.min(obStep + 1, 2);
   updateStepDots();
@@ -1033,6 +1067,85 @@ function esc(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Folder Browser ────────────────────────────────────────────────────────────
+let _fbContext  = 'ob';   // 'ob' or 'settings'
+let _fbCurrent  = null;
+
+async function openFolderBrowser(context) {
+  _fbContext = context;
+  document.getElementById('folder-browser-overlay').classList.remove('hidden');
+  await _fbNavigate(null);
+}
+
+function closeFolderBrowser(e) {
+  if (e && e.target !== document.getElementById('folder-browser-overlay')) return;
+  document.getElementById('folder-browser-overlay').classList.add('hidden');
+}
+
+async function _fbNavigate(dirPath) {
+  _fbCurrent = dirPath;
+  const pathLabel = document.getElementById('fb-current-path');
+  const list      = document.getElementById('fb-list');
+  const selectBtn = document.getElementById('fb-select-btn');
+
+  pathLabel.textContent = dirPath || 'Select a starting location';
+  selectBtn.disabled = !dirPath;
+  list.innerHTML = '<div style="color:var(--text3);padding:12px">Loading…</div>';
+
+  try {
+    const url  = dirPath ? `/api/browse?path=${encodeURIComponent(dirPath)}` : '/api/browse';
+    const data = await api(url);
+
+    let html = '';
+
+    // Parent folder link
+    if (data.parent) {
+      html += `<div class="fb-item fb-parent" onclick="_fbNavigate('${esc(data.parent)}')">
+        <span class="fb-icon">⬆</span> <span>.. (Up)</span>
+      </div>`;
+    }
+
+    // Suggestions shown when at root
+    if (data.suggestions?.length) {
+      html += '<div class="fb-section-label">Suggested media folders</div>';
+      html += data.suggestions.map(s => `
+        <div class="fb-item fb-suggestion" onclick="_fbNavigate('${esc(s)}')">
+          <span class="fb-icon">📁</span>
+          <span class="fb-name">${esc(s)}</span>
+        </div>`).join('');
+      if (data.entries?.length) html += '<div class="fb-section-label">All locations</div>';
+    }
+
+    // Sub-directories
+    if (data.entries?.length) {
+      html += data.entries.map(e => `
+        <div class="fb-item" onclick="_fbNavigate('${esc(e.path)}')">
+          <span class="fb-icon">📁</span>
+          <span class="fb-name">${esc(e.name)}</span>
+        </div>`).join('');
+    } else if (!data.suggestions?.length) {
+      html += '<div style="color:var(--text3);padding:12px;font-size:13px">No sub-folders found.</div>';
+    }
+
+    list.innerHTML = html;
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--accent-red,#e05);padding:12px;font-size:13px">Error: ${esc(err.message)}</div>`;
+  }
+}
+
+function folderBrowserSelect() {
+  if (!_fbCurrent) return;
+  document.getElementById('folder-browser-overlay').classList.add('hidden');
+
+  if (_fbContext === 'ob') {
+    document.getElementById('ob-folder-input').value = _fbCurrent;
+    obAddFolder();
+  } else {
+    document.getElementById('settings-folder-input').value = _fbCurrent;
+    settingsAddFolder();
+  }
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

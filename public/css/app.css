@@ -1258,3 +1258,99 @@ body.theme-violet {
     mask-image: linear-gradient(to right, black 80%, transparent 100%);
   }
 }
+
+/* ── Folder Browser Modal ─────────────────────────────────────────────────── */
+#folder-browser-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+#folder-browser-overlay.hidden { display: none; }
+
+.folder-browser-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(520px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.folder-browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.folder-browser-title { font-size: 15px; font-weight: 600; color: var(--text1); }
+
+.folder-browser-path {
+  padding: 8px 18px;
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text3);
+  background: rgba(255,255,255,.04);
+  border-bottom: 1px solid var(--border);
+  word-break: break-all;
+}
+
+.folder-browser-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.fb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.fb-item:hover  { background: rgba(255,255,255,.07); }
+.fb-icon        { font-size: 16px; flex-shrink: 0; }
+.fb-name        { font-size: 14px; color: var(--text1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-parent      { color: var(--text3); }
+.fb-section-label {
+  padding: 6px 18px 2px;
+  font-size: 11px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.fb-suggestion .fb-name { color: var(--accent, #e5a020); }
+
+.folder-browser-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Folder Suggestions (onboarding) ─────────────────────────────────────── */
+.folder-suggestion-btn {
+  display: inline-block;
+  margin: 0 6px 6px 0;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+  font-family: monospace;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.folder-suggestion-btn:hover {
+  background: rgba(255,255,255,.09);
+  color: var(--text1);
+}
