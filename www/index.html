@@ -946,8 +946,16 @@ const LIBRARY_KEY       = 'lum_library';
 const KEYS_KEY          = 'lum_keys';
 const MIN_SPLASH_MS     = 1400;             // minimum splash display time (ms)
 
-// ── File System Access API availability ─────────────────────────────────────
-const HAS_FS_API = typeof window.showDirectoryPicker === 'function';
+// ── Platform detection ───────────────────────────────────────────────────────
+// IS_CAPACITOR is true when running inside the native Android (or iOS) APK.
+const IS_CAPACITOR = !!(
+  window.Capacitor &&
+  typeof window.Capacitor.isNativePlatform === 'function' &&
+  window.Capacitor.isNativePlatform()
+);
+// File System Access API is only usable in a real browser context, not inside
+// Android WebView (which doesn't expose showDirectoryPicker).
+const HAS_FS_API = !IS_CAPACITOR && typeof window.showDirectoryPicker === 'function';
 
 // ── IndexedDB — persist directory handle across page reloads ─────────────────
 const IDB_NAME  = 'lumiere_handles';
@@ -1027,6 +1035,12 @@ function showGrantBanner(visible) {
 
 // Called from the re-grant banner
 async function grantFolderAccess() {
+  if (IS_CAPACITOR) {
+    // On Android, re-running pickFolder() asks the user to confirm the folder
+    // again via the system picker (or silently succeeds if permission is still valid).
+    await _pickFolderWithCapacitor();
+    return;
+  }
   if (!dirHandle) return;
   try {
     const perm = await dirHandle.requestPermission({ mode: 'read' });
@@ -1089,8 +1103,37 @@ async function autoScanDirectory() {
   setupSidebar();
   hideSplash();
 
-  // ── File System Access: restore stored folder handle ───────────────────
-  if (HAS_FS_API) {
+  // ── Capacitor (Android SAF): restore persisted folder ──────────────────
+  if (IS_CAPACITOR) {
+    try {
+      const result = await window.Capacitor.Plugins.FolderPicker.getPersistedFolder();
+      const nativeFiles = result && result.files;
+      if (nativeFiles && nativeFiles.length) {
+        // Build a filename → library-item map for O(1) lookups.
+        const libMap = new Map(library.map(m => [m.filename, m]));
+
+        // Re-attach content URIs to existing library items so they can be played
+        // immediately without needing to re-scan first.
+        for (const nf of nativeFiles) {
+          const item = libMap.get(nf.name);
+          if (item) item.contentUri = nf.uri;
+        }
+        // Scan any genuinely new files in the background.
+        const newFiles = nativeFiles.filter(nf => !libMap.has(nf.name));
+        if (newFiles.length) {
+          scanFiles(newFiles).catch(err => console.warn('[auto-scan]', err));
+        } else {
+          renderLibrary();
+          renderSidebarGenres();
+        }
+      } else if (result && result.permissionLapsed) {
+        showGrantBanner(true);
+      }
+    } catch (err) {
+      console.warn('[boot] Could not restore native folder:', err);
+    }
+  } else if (HAS_FS_API) {
+    // ── File System Access: restore stored folder handle ─────────────────
     try {
       dirHandle = await loadDirectoryHandle();
       if (dirHandle) {
@@ -1230,15 +1273,35 @@ function parseFilename(name) {
 const VIDEO_EXT = /\.(mp4|m4v|mkv|webm|mov|avi|ts|mpg|mpeg|flv|wmv|3gp|ogv|vob|m2ts|mts)$/i;
 
 // ── Folder picker ──────────────────────────────────────────────────────────
-// Main entry point: prefers File System Access API, falls back to <input>.
+// Main entry point: on Android APK uses the native SAF plugin; in a browser
+// prefers the File System Access API; falls back to <input type="file">.
 // Must be a regular (non-async) function so the .click() call on folder-input
 // remains within the synchronous user-gesture context on Android WebView.
 function pickFolder() {
+  if (IS_CAPACITOR) {
+    _pickFolderWithCapacitor();
+    return;
+  }
   if (HAS_FS_API) {
     _pickFolderWithFS();
   } else {
     // Browser/WebView doesn't support the File System Access API — use classic file input
     document.getElementById('folder-input').click();
+  }
+}
+
+// Android path: Storage Access Framework via the native FolderPicker plugin.
+// ACTION_OPEN_DOCUMENT_TREE shows the system folder picker and returns a
+// persistent tree URI that survives app restarts without re-prompting the user.
+async function _pickFolderWithCapacitor() {
+  try {
+    const result = await window.Capacitor.Plugins.FolderPicker.pickFolder();
+    const files = result && result.files;
+    if (!files?.length) { alert('No video files found in the selected folder.'); return; }
+    showGrantBanner(false);
+    await scanFiles(files);
+  } catch (err) {
+    if (err.message !== 'USER_CANCELLED') console.error('[picker]', err);
   }
 }
 
@@ -1315,7 +1378,11 @@ async function scanFiles(files) {
     // Check if already in library (same filename) — just refresh file ref
     const existing = library.find(m => m.filename === file.name);
     if (existing) {
-      existing.fileRef = file;
+      if (file.uri) {
+        existing.contentUri = file.uri;
+      } else {
+        existing.fileRef = file;
+      }
       existing.blobUrl = null;
       continue;
     }
@@ -1330,8 +1397,9 @@ async function scanFiles(files) {
           const { show, epData, showPoster, showBackdrop } = tvResult;
           newMovies.push({
             filename:    file.name,
-            fileRef:     file,
+            fileRef:     file.uri ? null : file,
             blobUrl:     null,
+            contentUri:  file.uri || null,
             media_type:  'tv',
             show_name:   showName,
             season,
@@ -1362,8 +1430,9 @@ async function scanFiles(files) {
       // No TMDB key or lookup failed — add with filename-parsed data
       newMovies.push({
         filename:    file.name,
-        fileRef:     file,
+        fileRef:     file.uri ? null : file,
         blobUrl:     null,
+        contentUri:  file.uri || null,
         media_type:  'tv',
         show_name:   showName,
         season,
@@ -1404,8 +1473,9 @@ async function scanFiles(files) {
 
         newMovies.push({
           filename:    file.name,
-          fileRef:     file,
+          fileRef:     file.uri ? null : file,
           blobUrl:     null,
+          contentUri:  file.uri || null,
           media_type:  'movie',
           title:       movie.title || title,
           year:        movie.release_date ? movie.release_date.slice(0, 4) : year,
@@ -1434,8 +1504,9 @@ async function scanFiles(files) {
     // No TMDB key or lookup failed — add with filename-parsed data so file is still playable
     newMovies.push({
       filename:    file.name,
-      fileRef:     file,
+      fileRef:     file.uri ? null : file,
       blobUrl:     null,
+      contentUri:  file.uri || null,
       media_type:  'movie',
       title,
       year,
@@ -1835,6 +1906,12 @@ async function playMovie(m) {
   // Revoke old blob URL
   if (m.blobUrl) { URL.revokeObjectURL(m.blobUrl); m.blobUrl = null; }
 
+  // Android SAF: use the persisted content URI directly — no blob URL needed.
+  if (m.contentUri) {
+    startPlayer(m);
+    return;
+  }
+
   if (m.fileRef) {
     m.blobUrl = URL.createObjectURL(m.fileRef);
     startPlayer(m);
@@ -1968,7 +2045,7 @@ function startPlayer(m) {
   titleEl.textContent  = m.title || '';
   document.title       = m.title ? `${m.title} — Lumière` : 'Lumière';
 
-  setVideoSource(m.blobUrl, m.filename);
+  setVideoSource(m.contentUri || m.blobUrl, m.filename);
 
   // Restore progress
   const saved = getProgress(m.filename);

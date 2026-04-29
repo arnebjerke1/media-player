@@ -6,6 +6,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Register custom plugins before the Capacitor bridge is initialised.
+        registerPlugin(FolderPickerPlugin.class);
+
         super.onCreate(savedInstanceState);
         // Disable the default requirement for a user gesture before media can play.
         // Capacitor already sets this, but we explicitly override it here to ensure
