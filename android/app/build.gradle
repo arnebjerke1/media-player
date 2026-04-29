@@ -9,6 +9,7 @@ def readAppSecret = { String propName, String envName ->
 }
 
 def escapeBuildConfigString = { String value ->
+    value = (value ?: '').toString()
     value
         .replace('\\', '\\\\')
         .replace('"', '\\"')

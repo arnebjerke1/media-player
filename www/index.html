@@ -1764,9 +1764,9 @@ function buildAllViewItems(items) {
     if (!show.backdropFull && item.backdropFull) show.backdropFull = item.backdropFull;
     if (!show.year && item.year) show.year = item.year;
     if ((!show.genres || !show.genres.length) && item.genres?.length) show.genres = item.genres;
-    show.is4k ||= !!item.is4k;
-    show.isHdr ||= !!item.isHdr;
-    show.isDolbyVision ||= !!item.isDolbyVision;
+    show.is4k = show.is4k || Boolean(item.is4k);
+    show.isHdr = show.isHdr || Boolean(item.isHdr);
+    show.isDolbyVision = show.isDolbyVision || Boolean(item.isDolbyVision);
   }
 
   combined.push(...groupedShows.values());
@@ -2445,7 +2445,7 @@ video.addEventListener('error',   () => {
     if (openExternally) {
       openInExternalPlayer(currentMovie).then(opened => {
         if (opened) exitPlayer();
-        else alert('No compatible video app was found on this device.');
+        else alert('No compatible video app was found on this device. Please install a video player from the Play Store.');
       });
     }
     return;
