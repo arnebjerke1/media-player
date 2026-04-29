@@ -2,6 +2,9 @@
 
 **Your personal local media library.** Drop a movie folder in, and Lumière turns it into a beautiful Netflix-style experience — posters, ratings, cast, subtitles and more. Zero account. Zero cloud. Everything stays on your device.
 
+> **Primary target device: Samsung tablet running Android 13.**
+> All UI, touch interactions, APK builds and testing are optimised for this platform.
+
 ---
 
 ## Features
@@ -115,7 +118,9 @@ The Android build bakes them into the app, so posters and ratings are ready on f
 
 ---
 
-## Using Lumière on a Samsung Tablet (or any phone/tablet)
+## Using Lumière on a Samsung Tablet (Android 13)
+
+> **This is the primary supported device.** Lumière is built and tested on a Samsung tablet running Android 13.
 
 Lumière runs as a local web server — any device on the same Wi-Fi network can access it through a browser.
 
