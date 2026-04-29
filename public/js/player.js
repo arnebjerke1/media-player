@@ -174,20 +174,39 @@ function startWebPlayer() {
 video.addEventListener('error', () => {
   const err = video.error;
   if (!err) return;
-  if ((err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED ||
-       err.code === MediaError.MEDIA_ERR_DECODE) && !isTranscoding) {
-    // Show appropriate options based on what's available
+  const isCodecError = err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED ||
+                       err.code === MediaError.MEDIA_ERR_DECODE;
+
+  if (isCodecError && isTranscoding) {
+    // Transcoding itself failed — surface an error
+    isTranscoding = false;
+    vspinner.style.display = 'none';
+    codecMsg.textContent = 'Transcoding failed. The file may be corrupt or unsupported.';
+    if (btnTranscode) btnTranscode.style.display = '';
+    codecBanner.classList.add('show');
+    return;
+  }
+
+  if (isCodecError && !isTranscoding) {
     if (FolderPickerPlugin) {
       // Running in Android app — best option is native external player
       codecMsg.textContent = 'This format needs an external player';
       if (btnTranscode) btnTranscode.style.display = ffmpegAvailable ? '' : 'none';
+      codecBanner.classList.add('show');
     } else if (ffmpegAvailable) {
-      codecMsg.textContent = 'Codec not supported — use server transcoding';
+      // Auto-transcode via FFmpeg without requiring a manual button click
+      isTranscoding = true;
+      vspinner.style.display = 'block';
+      showHint('Transcoding for browser compatibility...');
+      const seekTo = video.currentTime || 0;
+      video.src = `/api/transcode/${mediaId}${seekTo > 0 ? `?start=${Math.floor(seekTo)}` : ''}`;
+      video.load();
+      video.play().catch(() => {});
     } else {
       codecMsg.textContent = 'Codec not supported. Install FFmpeg on the server to enable transcoding.';
       if (btnTranscode) btnTranscode.style.display = 'none';
+      codecBanner.classList.add('show');
     }
-    codecBanner.classList.add('show');
   }
 });
 
