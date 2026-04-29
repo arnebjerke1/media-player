@@ -2234,6 +2234,8 @@ function clearVideoSources() {
 // MIME type — this is critical on Android WebView to ensure audio is decoded.
 function setVideoSource(blobUrl, filename) {
   clearVideoSources();
+  // Remove any lingering src attribute so the <source> child is not ignored.
+  video.removeAttribute('src');
   const src = document.createElement('source');
   src.src  = blobUrl;
   src.type = getVideoMimeType(filename);
@@ -2287,7 +2289,7 @@ function startPlayer(m) {
 
   showScreen('player');
   video.addEventListener('playing', showPlaybackBadge, { once: true });
-  video.play().catch(() => {});
+  video.play().catch(() => { showControls(); });
   showControls();
 }
 
@@ -2302,9 +2304,10 @@ function exitPlayer() {
   clearInterval(sleepTickInterval);
   clearTimeout(hdrIndicatorTimer);
   hdrInd.classList.remove('show');
-  // Clear source elements and src
+  // Clear source elements and remove the src attribute entirely so that
+  // subsequent plays via <source> children are not silently ignored.
   clearVideoSources();
-  video.src = '';
+  video.removeAttribute('src');
   subDisp.innerHTML = '';
   parsedSubs = [];
   currentSubIdx = -1;
