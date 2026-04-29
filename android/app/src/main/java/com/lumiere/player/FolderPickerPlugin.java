@@ -64,8 +64,13 @@ public class FolderPickerPlugin extends Plugin {
 
     private void handleFolderResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+        freeSavedCall();
+        if (result.getResultCode() != Activity.RESULT_OK) {
             call.reject("USER_CANCELLED");
+            return;
+        }
+        if (result.getData() == null) {
+            call.reject("NO_DATA");
             return;
         }
 
