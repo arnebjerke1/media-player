@@ -112,8 +112,13 @@ function parseTvFilename(filename, filePath) {
   if (match) {
     let rawShow = match[1].trim().replace(/[-\s]+$/, '').trim();
     if (!rawShow && filePath) {
-      // No show name in filename — try to derive from parent directory
+      // No show name in filename — try to derive from parent directory structure
       rawShow = _showNameFromPath(filePath) || '';
+      // If still empty (no "Season N" folder), use the parent folder directly.
+      // Handles layouts like: /Shows/Breaking Bad/S01E01.mkv
+      if (!rawShow) {
+        rawShow = _showNameFromParentDir(filePath) || '';
+      }
     }
     if (!rawShow) return null;
     return {
@@ -129,6 +134,9 @@ function parseTvFilename(filename, filePath) {
     let rawShow = match[1].trim().replace(/[-\s]+$/, '').trim();
     if (!rawShow && filePath) {
       rawShow = _showNameFromPath(filePath) || '';
+      if (!rawShow) {
+        rawShow = _showNameFromParentDir(filePath) || '';
+      }
     }
     if (!rawShow) return null;
     return {
@@ -158,6 +166,21 @@ function _showNameFromPath(filePath) {
     }
   }
   return null;
+}
+
+/**
+ * Use the parent directory as a show name fallback.
+ * Returns null for season-style folder names (Season 1, S01) and when the
+ * path resolves to an empty or root-level parent.
+ * Handles layouts like: /Shows/Breaking Bad/S01E01.mkv
+ */
+function _showNameFromParentDir(filePath) {
+  const parent = path.basename(path.dirname(filePath));
+  // Reject empty, root ('/'), and Windows drive roots ('C:')
+  if (!parent || parent === '/' || /^[A-Za-z]:$/.test(parent)) return null;
+  // Don't use season folders as show names
+  if (/^[Ss]eason\s*\d+$/i.test(parent) || /^[Ss]\d{1,2}$/i.test(parent)) return null;
+  return parent;
 }
 
 /**
