@@ -302,7 +302,8 @@ function renderGrid(movies) {
     grid.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">🎬</div>
-        <p>${currentSearch ? 'No movies match your search.' : 'No movies here yet. Add a folder in Settings and scan your library.'}</p>
+        <p>${currentSearch ? 'No movies match your search.' : 'No movies here yet.'}</p>
+        ${!currentSearch ? `<button class="btn btn-primary" onclick="openSettings()" style="margin-top:12px">⚙ Open Settings to add a folder</button>` : ''}
       </div>`;
     return;
   }
@@ -434,10 +435,11 @@ function renderHeroItem(m) {
   const buttons  = document.getElementById('hero-buttons');
 
   if (!m) {
-    title.textContent   = 'Welcome to Lumière';
-    overview.textContent = 'Add your movie folder in Settings to get started.';
-    genres.innerHTML = meta.innerHTML = buttons.innerHTML = '';
+    title.textContent    = 'Welcome to Lumière';
+    overview.textContent = 'Add your media folder in Settings to get started.';
+    genres.innerHTML = meta.innerHTML = '';
     backdrop.style.backgroundImage = '';
+    buttons.innerHTML = `<button class="more-btn" onclick="openSettings()">⚙ Open Settings</button>`;
     return;
   }
 
@@ -1093,13 +1095,20 @@ async function _fbNavigate(dirPath) {
   const list      = document.getElementById('fb-list');
   const selectBtn = document.getElementById('fb-select-btn');
 
-  pathLabel.textContent = dirPath || 'Select a starting location';
+  pathLabel.textContent = dirPath || '';
   selectBtn.disabled = !dirPath;
   list.innerHTML = '<div style="color:var(--text3);padding:12px">Loading…</div>';
 
   try {
     const url  = dirPath ? `/api/browse?path=${encodeURIComponent(dirPath)}` : '/api/browse';
     const data = await api(url);
+
+    // Server may return a resolved default path (e.g. home dir) when no path was requested.
+    if (data.current && !_fbCurrent) {
+      _fbCurrent = data.current;
+      selectBtn.disabled = false;
+    }
+    pathLabel.textContent = _fbCurrent || 'Select a starting location';
 
     let html = '';
 
