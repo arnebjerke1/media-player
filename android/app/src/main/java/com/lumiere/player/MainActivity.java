@@ -8,12 +8,10 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // Register custom plugins before the Capacitor bridge is initialised.
         registerPlugin(FolderPickerPlugin.class);
+        registerPlugin(VideoPlayerPlugin.class);
 
         super.onCreate(savedInstanceState);
         // Disable the default requirement for a user gesture before media can play.
-        // Capacitor already sets this, but we explicitly override it here to ensure
-        // audio always works in the WebView even on devices/versions where the default
-        // may have changed.
         bridge.getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
     }
 }
