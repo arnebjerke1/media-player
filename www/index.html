@@ -113,6 +113,11 @@ a{color:#e50914;text-decoration:none}img{display:block}
   font-size:14px;font-weight:700;
 }
 #folder-input{display:none}
+.grant-banner{
+  background:rgba(229,9,20,.1);border:1px solid rgba(229,9,20,.35);
+  margin:12px 20px 0;padding:12px 16px;border-radius:8px;
+  cursor:pointer;font-size:13px;line-height:1.5;
+}
 
 /* Scan progress */
 #scan-overlay{
@@ -695,15 +700,18 @@ a{color:#e50914;text-decoration:none}img{display:block}
     <button class="icon-btn" id="btn-settings-open" title="Settings">⚙️</button>
   </div>
 
+  <!-- Re-grant folder access banner (shown when handle is stored but permission lapsed) -->
+  <div id="grant-banner" class="grant-banner" style="display:none" onclick="grantFolderAccess()">
+    📂 <strong>Tap here to re-grant folder access</strong> — Lumière will automatically reload your media library.
+  </div>
+
   <!-- Folder picker zone (shown only when no library loaded) -->
   <div id="pick-zone">
     <h2>📁 Open Your Videos</h2>
-    <p>Select a folder (and all sub-folders) from your device.<br />Lumière looks up every video file on TMDB and only shows films it can identify.</p>
-    <label class="pick-btn">
-      📂 Select Folder
-      <input id="folder-input" type="file" accept="video/*,.mkv,.avi,.mp4,.m4v,.mov,.webm,.ts,.mpg,.mpeg,.flv,.wmv,.3gp,.ogv,.vob" multiple />
-    </label>
-    <p style="margin-top:12px;font-size:11px;color:var(--text3)">On Android tap "Files" → navigate to your folder → tap "Select"<br/>On Chrome desktop you can drag &amp; drop a folder here</p>
+    <p>Select a folder and Lumière will automatically scan all video files, identify movies &amp; TV shows (split by season), and keep your library up to date.</p>
+    <button class="pick-btn" id="pick-btn" onclick="pickFolder()">📂 Select Folder</button>
+    <input id="folder-input" type="file" accept="video/*,.mkv,.avi,.mp4,.m4v,.mov,.webm,.ts,.mpg,.mpeg,.flv,.wmv,.3gp,.ogv,.vob" multiple style="display:none" />
+    <p style="margin-top:12px;font-size:11px;color:var(--text3)">Access is remembered automatically — you won't need to pick your folder again.<br/>TV shows are grouped by show and split into seasons automatically.</p>
   </div>
 
   <!-- Continue Watching -->
@@ -931,14 +939,129 @@ let activeSidebarSection = 'all';
 let activeGenreFilter    = '';
 let currentTvShow        = null;
 let currentSeason        = null;
+let dirHandle     = null;  // FileSystemDirectoryHandle (File System Access API)
 
 const PROGRESS_KEY      = 'lum_progress';   // localStorage: { filename -> position }
 const LIBRARY_KEY       = 'lum_library';
 const KEYS_KEY          = 'lum_keys';
 const MIN_SPLASH_MS     = 1400;             // minimum splash display time (ms)
 
+// ── File System Access API availability ─────────────────────────────────────
+const HAS_FS_API = typeof window.showDirectoryPicker === 'function';
+
+// ── IndexedDB — persist directory handle across page reloads ─────────────────
+const IDB_NAME  = 'lumiere_handles';
+const IDB_STORE = 'handles';
+const IDB_KEY   = 'mediaFolder';
+let _idb = null;
+
+async function openHandleDB() {
+  if (_idb) return _idb;
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess  = e => { _idb = e.target.result; resolve(_idb); };
+    req.onerror    = e => reject(e.target.error);
+  });
+}
+async function saveDirectoryHandle(handle) {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
+    tx.oncomplete = resolve;
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+async function loadDirectoryHandle() {
+  try {
+    const db = await openHandleDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(IDB_KEY);
+      req.onsuccess = e => resolve(e.target.result || null);
+      req.onerror   = e => reject(e.target.error);
+    });
+  } catch { return null; }
+}
+async function clearDirectoryHandle() {
+  try {
+    const db = await openHandleDB();
+    return new Promise(resolve => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY);
+      tx.oncomplete = resolve;
+    });
+  } catch {}
+}
+
+// Dirs to skip when recursively scanning
+const SCAN_SKIP = new Set([
+  'node_modules', 'System Volume Information', '$RECYCLE.BIN',
+  'Windows', 'Program Files', 'Program Files (x86)', '.Trash',
+]);
+
+// Files to skip during directory scan (samples, trailers, bonus content)
+const SCAN_SKIP_FILE_RE = /\b(sample|trailer|featurette|behind.the.scenes|deleted.scene)\b/i;
+
+// Recursively scan a FileSystemDirectoryHandle for video files
+async function scanDirectoryHandle(handle, results = []) {
+  for await (const [name, entry] of handle) {
+    if (name.startsWith('.') || SCAN_SKIP.has(name)) continue;
+    if (entry.kind === 'directory') {
+      await scanDirectoryHandle(entry, results);
+    } else if (entry.kind === 'file' && VIDEO_EXT.test(name)) {
+      if (SCAN_SKIP_FILE_RE.test(name)) continue;
+      const file = await entry.getFile();
+      file._fsHandle = entry;   // stash the handle for later playback
+      results.push(file);
+    }
+  }
+  return results;
+}
+
+// Show / hide the re-grant permission banner
+function showGrantBanner(visible) {
+  const el = document.getElementById('grant-banner');
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+// Called from the re-grant banner
+async function grantFolderAccess() {
+  if (!dirHandle) return;
+  try {
+    const perm = await dirHandle.requestPermission({ mode: 'read' });
+    if (perm !== 'granted') return;
+    showGrantBanner(false);
+    await autoScanDirectory();
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error('[permission]', err);
+  }
+}
+
+// Scan directory handle: re-attach file refs to existing items + add new ones
+async function autoScanDirectory() {
+  if (!dirHandle) return;
+  const files = await scanDirectoryHandle(dirHandle);
+  // Re-attach fileRefs to existing library items so they can be played
+  for (const file of files) {
+    const existing = library.find(m => m.filename === file.name);
+    if (existing) {
+      existing.fileRef  = file;
+      existing.blobUrl  = null;
+    }
+  }
+  // Pick up genuinely new files and run the usual scan/metadata fetch
+  const newFiles = files.filter(f => !library.find(m => m.filename === f.name));
+  if (newFiles.length) {
+    await scanFiles(newFiles);
+  } else {
+    renderLibrary();
+    renderSidebarGenres();
+  }
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
-(function boot() {
+(async function boot() {
   const splash = document.getElementById('splash');
   const splashStart = Date.now();
 
@@ -969,6 +1092,25 @@ const MIN_SPLASH_MS     = 1400;             // minimum splash display time (ms)
 
   setupSidebar();
   hideSplash();
+
+  // ── File System Access: restore stored folder handle ───────────────────
+  if (HAS_FS_API) {
+    try {
+      dirHandle = await loadDirectoryHandle();
+      if (dirHandle) {
+        const perm = await dirHandle.queryPermission({ mode: 'read' });
+        if (perm === 'granted') {
+          // Permission is still valid — silently re-scan in the background
+          autoScanDirectory().catch(err => console.warn('[auto-scan]', err));
+        } else {
+          // Permission has lapsed — show a banner asking the user to re-grant
+          showGrantBanner(true);
+        }
+      }
+    } catch (err) {
+      console.warn('[boot] Could not restore directory handle:', err);
+    }
+  }
 })();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1023,7 +1165,10 @@ function clearLibrary() {
   if (!confirm('Clear the saved library? You will need to pick a folder again.')) return;
   library = [];
   filteredLib = [];
+  dirHandle = null;
   saveLS(LIBRARY_KEY, []);
+  clearDirectoryHandle();
+  showGrantBanner(false);
   renderLibrary();
   closeSettings();
 }
@@ -1089,6 +1234,32 @@ function parseFilename(name) {
 const VIDEO_EXT = /\.(mp4|m4v|mkv|webm|mov|avi|ts|mpg|mpeg|flv|wmv|3gp|ogv|vob|m2ts|mts)$/i;
 
 // ── Folder picker ──────────────────────────────────────────────────────────
+// Main entry point: prefers File System Access API, falls back to <input>
+async function pickFolder() {
+  if (HAS_FS_API) {
+    try {
+      const handle = await showDirectoryPicker({ mode: 'read' });
+      dirHandle = handle;
+      await saveDirectoryHandle(handle);
+      showGrantBanner(false);
+      const files = await scanDirectoryHandle(handle);
+      if (!files.length) { alert('No video files found in the selected folder.'); return; }
+      await scanFiles(files);
+    } catch (err) {
+      // AbortError means the user cancelled the picker — not an error
+      if (err.name !== 'AbortError') {
+        console.error('[picker]', err);
+        // Fall back to the hidden file input on unexpected errors
+        document.getElementById('folder-input').click();
+      }
+    }
+  } else {
+    // Browser doesn't support the File System Access API — use classic file input
+    document.getElementById('folder-input').click();
+  }
+}
+
+// Fallback: classic <input type="file"> (used when File System Access API unavailable)
 document.getElementById('folder-input').addEventListener('change', async function(e) {
   const files = Array.from(e.target.files).filter(f => VIDEO_EXT.test(f.name));
   if (!files.length) { alert('No video files found in the selected folder.'); return; }
@@ -1598,7 +1769,7 @@ function closeModalBtn() {
 }
 
 // ── Play Movie ─────────────────────────────────────────────────────────────
-function playMovie(m) {
+async function playMovie(m) {
   closeModalBtn();
   currentMovie = m;
 
@@ -1608,21 +1779,48 @@ function playMovie(m) {
   if (m.fileRef) {
     m.blobUrl = URL.createObjectURL(m.fileRef);
     startPlayer(m);
-  } else {
-    // fileRef lost (page reload) — ask user to re-pick the file
-    alert(`To play "${m.title}", please pick the file again. Your library info is saved.`);
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = 'video/*,.mkv,.avi,.mp4,.m4v,.mov,.webm';
-    inp.onchange = () => {
-      const f = inp.files[0];
-      if (!f) return;
-      m.fileRef = f;
-      m.blobUrl = URL.createObjectURL(f);
-      startPlayer(m);
-    };
-    inp.click();
+    return;
   }
+
+  // fileRef is missing (page reload) — try to retrieve via stored directory handle
+  if (dirHandle) {
+    try {
+      const perm = await dirHandle.queryPermission({ mode: 'read' });
+      const granted = perm === 'granted'
+        || (await dirHandle.requestPermission({ mode: 'read' })) === 'granted';
+      if (granted) {
+        const files = await scanDirectoryHandle(dirHandle);
+        const match = files.find(f => f.name === m.filename);
+        if (match) {
+          m.fileRef = match;
+          m.blobUrl = URL.createObjectURL(match);
+          // Also re-attach refs for other items while we have the handle
+          for (const f of files) {
+            const item = library.find(x => x.filename === f.name);
+            if (item && !item.fileRef) { item.fileRef = f; }
+          }
+          startPlayer(m);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[playMovie] Could not retrieve via handle:', err);
+    }
+  }
+
+  // Last resort: ask user to re-pick the specific file
+  alert(`To play "${m.title}", please pick the file again. Your library info is saved.`);
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'video/*,.mkv,.avi,.mp4,.m4v,.mov,.webm';
+  inp.onchange = () => {
+    const f = inp.files[0];
+    if (!f) return;
+    m.fileRef = f;
+    m.blobUrl = URL.createObjectURL(f);
+    startPlayer(m);
+  };
+  inp.click();
 }
 
 // ── Player ─────────────────────────────────────────────────────────────────
