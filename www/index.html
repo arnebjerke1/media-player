@@ -1079,15 +1079,11 @@ async function autoScanDirectory() {
 
   const savedLib = safeLS(LIBRARY_KEY);
 
-  if (!keys.tmdb && !savedLib) {
-    showScreen('setup');
-  } else {
-    showScreen('library');
-    if (savedLib && savedLib.length) {
-      library = savedLib;
-      renderLibrary();
-      renderSidebarGenres();
-    }
+  showScreen('library');
+  if (savedLib && savedLib.length) {
+    library = savedLib;
+    renderLibrary();
+    renderSidebarGenres();
   }
 
   setupSidebar();
@@ -1234,28 +1230,34 @@ function parseFilename(name) {
 const VIDEO_EXT = /\.(mp4|m4v|mkv|webm|mov|avi|ts|mpg|mpeg|flv|wmv|3gp|ogv|vob|m2ts|mts)$/i;
 
 // ── Folder picker ──────────────────────────────────────────────────────────
-// Main entry point: prefers File System Access API, falls back to <input>
-async function pickFolder() {
+// Main entry point: prefers File System Access API, falls back to <input>.
+// Must be a regular (non-async) function so the .click() call on folder-input
+// remains within the synchronous user-gesture context on Android WebView.
+function pickFolder() {
   if (HAS_FS_API) {
-    try {
-      const handle = await showDirectoryPicker({ mode: 'read' });
-      dirHandle = handle;
-      await saveDirectoryHandle(handle);
-      showGrantBanner(false);
-      const files = await scanDirectoryHandle(handle);
-      if (!files.length) { alert('No video files found in the selected folder.'); return; }
-      await scanFiles(files);
-    } catch (err) {
-      // AbortError means the user cancelled the picker — not an error
-      if (err.name !== 'AbortError') {
-        console.error('[picker]', err);
-        // Fall back to the hidden file input on unexpected errors
-        document.getElementById('folder-input').click();
-      }
-    }
+    _pickFolderWithFS();
   } else {
-    // Browser doesn't support the File System Access API — use classic file input
+    // Browser/WebView doesn't support the File System Access API — use classic file input
     document.getElementById('folder-input').click();
+  }
+}
+
+async function _pickFolderWithFS() {
+  try {
+    const handle = await showDirectoryPicker({ mode: 'read' });
+    dirHandle = handle;
+    await saveDirectoryHandle(handle);
+    showGrantBanner(false);
+    const files = await scanDirectoryHandle(handle);
+    if (!files.length) { alert('No video files found in the selected folder.'); return; }
+    await scanFiles(files);
+  } catch (err) {
+    // AbortError means the user cancelled the picker — not an error
+    if (err.name !== 'AbortError') {
+      console.error('[picker]', err);
+      // Fall back to the hidden file input on unexpected errors
+      document.getElementById('folder-input').click();
+    }
   }
 }
 
@@ -1320,77 +1322,137 @@ async function scanFiles(files) {
 
     const is4k = /4k|2160p|uhd/i.test(file.name);
 
-    if (isTv && keys.tmdb) {
-      // TV show handling
-      const tvResult = await tmdbTvSearch(showName, season, episode);
-      if (tvResult) {
-        const { show, epData, showPoster, showBackdrop } = tvResult;
+    if (isTv) {
+      // TV show handling — enrich with TMDB if key available, otherwise use parsed data
+      if (keys.tmdb) {
+        const tvResult = await tmdbTvSearch(showName, season, episode);
+        if (tvResult) {
+          const { show, epData, showPoster, showBackdrop } = tvResult;
+          newMovies.push({
+            filename:    file.name,
+            fileRef:     file,
+            blobUrl:     null,
+            media_type:  'tv',
+            show_name:   showName,
+            season,
+            episode,
+            title:       epData.name || `${showName} S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`,
+            year:        show.first_air_date ? show.first_air_date.slice(0, 4) : null,
+            overview:    epData.overview || show.overview || '',
+            tagline:     '',
+            tmdbId:      show.id,
+            imdbId:      null,
+            poster:      showPoster,
+            backdrop:    showBackdrop,
+            backdropFull: show.backdrop_path ? `https://image.tmdb.org/t/p/w1280${show.backdrop_path}` : null,
+            genres:      (show.genres || []).map(g => g.name),
+            runtime:     epData.runtime || null,
+            certification: '',
+            cast:        [],
+            director:    '',
+            imdbRating:  null,
+            rtScore:     null,
+            favourite:   false,
+            watchlisted: false,
+            is4k,
+          });
+          continue;
+        }
+      }
+      // No TMDB key or lookup failed — add with filename-parsed data
+      newMovies.push({
+        filename:    file.name,
+        fileRef:     file,
+        blobUrl:     null,
+        media_type:  'tv',
+        show_name:   showName,
+        season,
+        episode,
+        title:       `${showName} S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`,
+        year:        null,
+        overview:    '',
+        tagline:     '',
+        tmdbId:      null,
+        imdbId:      null,
+        poster:      null,
+        backdrop:    null,
+        backdropFull: null,
+        genres:      [],
+        runtime:     null,
+        certification: '',
+        cast:        [],
+        director:    '',
+        imdbRating:  null,
+        rtScore:     null,
+        favourite:   false,
+        watchlisted: false,
+        is4k,
+      });
+      continue;
+    }
+
+    // Movie handling — enrich with TMDB if key available, otherwise use parsed data
+    if (keys.tmdb) {
+      const movie = await tmdbSearch(title, year);
+      if (movie) {
+        // Fetch OMDB ratings if we have a key and imdb_id
+        let imdbRating = null, rtScore = null;
+        if (keys.omdb && movie.imdb_id) {
+          const omdb = await omdbLookup(movie.imdb_id);
+          if (omdb) { imdbRating = omdb.imdb; rtScore = omdb.rt; }
+        }
+
         newMovies.push({
           filename:    file.name,
           fileRef:     file,
           blobUrl:     null,
-          media_type:  'tv',
-          show_name:   showName,
-          season,
-          episode,
-          title:       epData.name || `${showName} S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`,
-          year:        show.first_air_date ? show.first_air_date.slice(0, 4) : null,
-          overview:    epData.overview || show.overview || '',
-          tagline:     '',
-          tmdbId:      show.id,
-          imdbId:      null,
-          poster:      showPoster,
-          backdrop:    showBackdrop,
-          backdropFull: show.backdrop_path ? `https://image.tmdb.org/t/p/w1280${show.backdrop_path}` : null,
-          genres:      (show.genres || []).map(g => g.name),
-          runtime:     epData.runtime || null,
-          certification: '',
-          cast:        [],
-          director:    '',
-          imdbRating:  null,
-          rtScore:     null,
+          media_type:  'movie',
+          title:       movie.title || title,
+          year:        movie.release_date ? movie.release_date.slice(0, 4) : year,
+          overview:    movie.overview || '',
+          tagline:     movie.tagline || '',
+          tmdbId:      movie.id,
+          imdbId:      movie.imdb_id || null,
+          poster:      movie.poster_path   ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : null,
+          backdrop:    movie.backdrop_path ? `https://image.tmdb.org/t/p/w780${movie.backdrop_path}` : null,
+          backdropFull:movie.backdrop_path ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}` : null,
+          genres:      (movie.genres || []).map(g => g.name),
+          runtime:     movie.runtime || null,
+          certification: extractCert(movie),
+          cast:        extractCast(movie),
+          director:    extractDirector(movie),
+          imdbRating,
+          rtScore,
           favourite:   false,
           watchlisted: false,
           is4k,
         });
+        continue;
       }
-      continue;
     }
 
-    if (!keys.tmdb) continue;
-
-    // Movie handling
-    const movie = await tmdbSearch(title, year);
-    if (!movie) continue;
-
-    // Fetch OMDB ratings if we have a key and imdb_id
-    let imdbRating = null, rtScore = null;
-    if (keys.omdb && movie.imdb_id) {
-      const omdb = await omdbLookup(movie.imdb_id);
-      if (omdb) { imdbRating = omdb.imdb; rtScore = omdb.rt; }
-    }
-
+    // No TMDB key or lookup failed — add with filename-parsed data so file is still playable
     newMovies.push({
       filename:    file.name,
       fileRef:     file,
       blobUrl:     null,
       media_type:  'movie',
-      title:       movie.title || title,
-      year:        movie.release_date ? movie.release_date.slice(0, 4) : year,
-      overview:    movie.overview || '',
-      tagline:     movie.tagline || '',
-      tmdbId:      movie.id,
-      imdbId:      movie.imdb_id || null,
-      poster:      movie.poster_path   ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : null,
-      backdrop:    movie.backdrop_path ? `https://image.tmdb.org/t/p/w780${movie.backdrop_path}` : null,
-      backdropFull:movie.backdrop_path ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}` : null,
-      genres:      (movie.genres || []).map(g => g.name),
-      runtime:     movie.runtime || null,
-      certification: extractCert(movie),
-      cast:        extractCast(movie),
-      director:    extractDirector(movie),
-      imdbRating,
-      rtScore,
+      title,
+      year,
+      overview:    '',
+      tagline:     '',
+      tmdbId:      null,
+      imdbId:      null,
+      poster:      null,
+      backdrop:    null,
+      backdropFull: null,
+      genres:      [],
+      runtime:     null,
+      certification: '',
+      cast:        [],
+      director:    '',
+      imdbRating:  null,
+      rtScore:     null,
       favourite:   false,
       watchlisted: false,
       is4k,
@@ -1406,10 +1468,7 @@ async function scanFiles(files) {
     renderLibrary();
     renderSidebarGenres();
   } else if (!scanCancelled) {
-    const msg = keys.tmdb
-      ? 'No new movies identified. Make sure filenames include the movie title (and optionally the year).'
-      : 'No API key set. Please open Settings and add a TMDB key to enable movie lookup.';
-    alert(msg);
+    alert('No new movies identified. Make sure filenames include the movie title (and optionally the year).');
   }
 }
 
