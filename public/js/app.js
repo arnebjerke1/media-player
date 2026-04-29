@@ -555,9 +555,15 @@ async function openModal(id) {
 
   // Poster
   const poster = document.getElementById('modal-poster');
-  poster.src = m.poster_path || '';
-  poster.alt = m.title;
-  poster.onerror = () => { poster.src = ''; };
+  if (m.poster_path) {
+    poster.src     = m.poster_path;
+    poster.alt     = m.title;
+    poster.style.display = '';
+    poster.onerror = () => { poster.style.display = 'none'; };
+  } else {
+    poster.src           = '';
+    poster.style.display = 'none';
+  }
 
   document.getElementById('modal-title').textContent   = m.title;
   document.getElementById('modal-tagline').textContent = m.tagline || '';

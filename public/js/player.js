@@ -26,6 +26,7 @@ let ffmpegAvailable = false;
 
 // Capacitor plugin bridge (null when running outside the Android app)
 const FolderPickerPlugin = window?.Capacitor?.Plugins?.FolderPicker || null;
+const VideoPlayerPlugin  = window?.Capacitor?.Plugins?.VideoPlayer  || null;
 const isCapacitor        = !!window?.Capacitor?.isNativePlatform?.();
 
 const video         = document.getElementById('video');
@@ -96,14 +97,54 @@ async function init() {
   titleEl.textContent = mediaInfo.title || 'Lumière';
   document.title      = `${mediaInfo.title || 'Movie'} — Lumière`;
 
+  // ── Android: always use native ExoPlayer (handles H.265, MKV, MP4, everything) ─
+  if (isCapacitor && VideoPlayerPlugin) {
+    await launchExoPlayer();
+    return;
+  }
+
+  // ── Web browser: use HTML5 video element ──────────────────────────────────────
+  startWebPlayer();
+}
+
+/** Launch the native ExoPlayer via Capacitor and return to library when done. */
+async function launchExoPlayer() {
+  // Show a minimal loading screen; hide the custom web controls
+  if (controls) controls.style.display = 'none';
+  if (vspinner) vspinner.style.display = 'block';
+
+  const streamUrl = `${location.origin}/api/stream/${mediaId}`;
+  const position  = (mediaInfo.position > 30 && !mediaInfo.completed)
+    ? mediaInfo.position : 0;
+
+  try {
+    const result = await VideoPlayerPlugin.play({
+      url:      streamUrl,
+      title:    mediaInfo.title || 'Video',
+      position: position,
+      mediaId:  mediaId,
+    });
+
+    // Save watch progress returned by the native player
+    if (result && result.duration > 0) {
+      await fetch(`/api/progress/${mediaId}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ position: result.position, duration: result.duration }),
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.error('[VideoPlayer]', e);
+  }
+
+  location.href = '/';
+}
+
+/** Initialise the HTML5 video element (desktop / browser path). */
+function startWebPlayer() {
   // Show/hide the "Open in external player" button based on platform
   if (btnExternal) {
     btnExternal.style.display = FolderPickerPlugin ? '' : 'none';
-  }
-
-  // Hide fullscreen button inside the Android app (Android handles its own fullscreen)
-  if (isCapacitor && btnFS) {
-    btnFS.style.display = 'none';
   }
 
   // Set video source

@@ -267,10 +267,30 @@ async function runScan() {
 
       const existingRef = db.getMediaByPath(filePath);
       if (existingRef) {
-        // Already indexed — re-fetch metadata if API key is available but poster is still missing
-        if (config.tmdbApiKey) {
-          const existingItem = db.getMediaById(existingRef.id);
-          if (existingItem && !existingItem.poster_path) {
+        // Already indexed — re-classify as TV if filename now matches, and/or re-fetch metadata
+        const existingItem = db.getMediaById(existingRef.id);
+        if (existingItem) {
+          // Re-classify: if item was stored as movie but filename is actually a TV episode, fix it
+          const reParsedTv = parseTvFilename(existingItem.filename, existingItem.path);
+          if (reParsedTv && existingItem.media_type !== 'tv') {
+            db.updateMedia(existingItem.id, {
+              mediaType: 'tv',
+              showName:  reParsedTv.showName,
+              season:    reParsedTv.season,
+              episode:   reParsedTv.episode,
+              title:     `${reParsedTv.showName} S${String(reParsedTv.season).padStart(2,'0')}E${String(reParsedTv.episode).padStart(2,'0')}`,
+            });
+            // Reload so subsequent metadata fetch uses correct type/show
+            Object.assign(existingItem, {
+              media_type: 'tv',
+              show_name:  reParsedTv.showName,
+              season:     reParsedTv.season,
+              episode:    reParsedTv.episode,
+            });
+          }
+
+          // Re-fetch metadata if API key is available but poster is still missing
+          if (config.tmdbApiKey && !existingItem.poster_path) {
             try {
               let updatedMeta = null;
               if (existingItem.media_type === 'tv' && existingItem.show_name) {

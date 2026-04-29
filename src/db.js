@@ -160,6 +160,8 @@ function updateMedia(id, u) {
     genres: u.genres, rating: u.rating, rt_score: u.rtScore,
     runtime: u.runtime, language: u.language, cast: u.cast, director: u.director,
     certification: u.certification,
+    media_type: u.mediaType, show_name: u.showName,
+    season: u.season, episode: u.episode,
   };
   const fields = Object.entries(map).filter(([, v]) => v !== undefined);
   if (!fields.length) return;
