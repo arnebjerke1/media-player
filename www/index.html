@@ -1824,7 +1824,9 @@ async function playMovie(m) {
 }
 
 // ── Player ─────────────────────────────────────────────────────────────────
+const CONTROLS_HIDE_DELAY_MS = 5000; // ms before controls auto-hide while playing
 let controlsTimer   = null;
+let controlsPinned  = false; // true while user's pointer/finger is over the controls bar
 let saveTimer       = null;
 let sleepTimer      = null;
 let sleepTickInterval = null;
@@ -1863,12 +1865,51 @@ const speedMenu   = document.getElementById('speed-menu');
 const sleepMenu   = document.getElementById('sleep-menu');
 const subsMenu    = document.getElementById('subs-menu');
 
+// Map file extensions to MIME types so Android WebView can identify the
+// stream correctly and route it to the right decoder (including audio tracks).
+const VIDEO_MIME_MAP = {
+  mp4:  'video/mp4',  m4v:  'video/mp4',
+  mkv:  'video/x-matroska',
+  webm: 'video/webm',
+  mov:  'video/quicktime',
+  avi:  'video/x-msvideo',
+  ts:   'video/mp2t',  m2ts: 'video/mp2t', mts: 'video/mp2t',
+  mpg:  'video/mpeg',  mpeg: 'video/mpeg',
+  flv:  'video/x-flv',
+  wmv:  'video/x-ms-wmv',
+  '3gp':'video/3gpp',
+  ogv:  'video/ogg',
+  vob:  'video/dvd',
+};
+function getVideoMimeType(filename) {
+  const name = filename || '';
+  const dotIdx = name.lastIndexOf('.');
+  if (dotIdx < 0 || dotIdx === name.length - 1) return 'video/mp4';
+  const ext = name.slice(dotIdx + 1).toLowerCase();
+  return VIDEO_MIME_MAP[ext] || 'video/mp4';
+}
+
+// Remove all child <source> elements from the video element.
+function clearVideoSources() {
+  while (video.firstChild) video.removeChild(video.firstChild);
+}
+
+// Set the video source using a <source> element so we can provide an explicit
+// MIME type — this is critical on Android WebView to ensure audio is decoded.
+function setVideoSource(blobUrl, filename) {
+  clearVideoSources();
+  const src = document.createElement('source');
+  src.src  = blobUrl;
+  src.type = getVideoMimeType(filename);
+  video.appendChild(src);
+  video.load();
+}
+
 function startPlayer(m) {
   titleEl.textContent  = m.title || '';
   document.title       = m.title ? `${m.title} — Lumière` : 'Lumière';
 
-  video.src = m.blobUrl;
-  video.load();
+  setVideoSource(m.blobUrl, m.filename);
 
   // Restore progress
   const saved = getProgress(m.filename);
@@ -1898,6 +1939,8 @@ function exitPlayer() {
   clearInterval(subIntervalId);
   clearTimeout(sleepTimer);
   clearInterval(sleepTickInterval);
+  // Clear source elements and src
+  clearVideoSources();
   video.src = '';
   subDisp.innerHTML = '';
   parsedSubs = [];
@@ -1912,8 +1955,8 @@ function exitPlayer() {
 function showControls() {
   controls.classList.remove('hidden');
   clearTimeout(controlsTimer);
-  if (!video.paused) {
-    controlsTimer = setTimeout(() => controls.classList.add('hidden'), 3500);
+  if (!video.paused && !controlsPinned) {
+    controlsTimer = setTimeout(() => controls.classList.add('hidden'), CONTROLS_HIDE_DELAY_MS);
   }
 }
 function toggleControls() {
@@ -1923,6 +1966,34 @@ function toggleControls() {
     controls.classList.add('hidden');
   }
 }
+
+// Keep controls visible while the user is interacting with the controls bar.
+// Uses pointerenter/pointerleave (covers both mouse and touch via pointer events).
+// On touch devices, touchstart on the controls bar pins, touchend unpins.
+(function attachControlsBarPinning() {
+  const ctrlTop    = document.getElementById('ctrl-top');
+  const ctrlBottom = document.getElementById('ctrl-bottom');
+  function pinControls() {
+    controlsPinned = true;
+    clearTimeout(controlsTimer);
+    controls.classList.remove('hidden');
+  }
+  function unpinControls() {
+    controlsPinned = false;
+    // Restart the auto-hide timer now that the user has left the controls area
+    if (!video.paused) {
+      controlsTimer = setTimeout(() => controls.classList.add('hidden'), CONTROLS_HIDE_DELAY_MS);
+    }
+  }
+  [ctrlTop, ctrlBottom].forEach(el => {
+    el.addEventListener('pointerenter', pinControls);
+    el.addEventListener('pointerleave', unpinControls);
+    // Belt-and-suspenders for touch: keep visible as long as a finger is down
+    el.addEventListener('touchstart',  pinControls,   { passive: true });
+    el.addEventListener('touchend',    unpinControls, { passive: true });
+    el.addEventListener('touchcancel', unpinControls, { passive: true });
+  });
+})();
 
 // Tap zones — single tap toggles controls, double tap performs action
 function setupTapZone(zone, onSingleTap, onDoubleTap) {
