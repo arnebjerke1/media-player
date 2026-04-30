@@ -103,7 +103,6 @@ public class PlayerActivity extends Activity {
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
-            finishWithResult();
             player.release();
             player = null;
         }
