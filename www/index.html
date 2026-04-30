@@ -2105,9 +2105,29 @@ async function playMovie(m) {
   // Revoke old blob URL
   if (m.blobUrl) { URL.revokeObjectURL(m.blobUrl); m.blobUrl = null; }
 
-  // Android SAF: use the persisted content URI directly — no blob URL needed.
-  if (m.contentUri) {
-    startPlayer(m);
+  // Android SAF: route through the native ExoPlayer (VideoPlayerPlugin) so that
+  // content:// URIs are handled correctly.  Android WebView cannot play content://
+  // URIs in the HTML5 <video> element — it just spins forever.
+  if (m.contentUri && IS_CAPACITOR) {
+    const saved      = getProgress(m.filename);
+    const resumePos  = (saved > MIN_RESUME_SECONDS &&
+                        !(m.runtime && saved / (m.runtime * 60) >= COMPLETION_RATIO))
+                       ? saved : 0;
+    try {
+      const result = await window.Capacitor.Plugins.VideoPlayer.play({
+        url:      m.contentUri,
+        title:    m.title || m.filename || '',
+        position: resumePos,
+      });
+      // Persist the position returned by the native player so "Continue watching"
+      // works after returning from ExoPlayer.
+      if (result && result.position > 0) {
+        saveProgress(m.filename, result.position);
+      }
+    } catch (err) {
+      console.warn('[VideoPlayer] native player failed, falling back to WebView:', err);
+      startPlayer(m);
+    }
     return;
   }
 
