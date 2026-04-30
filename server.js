@@ -617,7 +617,7 @@ app.get('/api/surprise', (req, res) => {
 });
 
 // ── SPA Catch-all ──────────────────────────────────────────────────────────────
-app.get('*', (_req, res) => {
+app.get('/{*path}', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
