@@ -481,8 +481,18 @@ app.get('/api/stream/:id', (req, res) => {
   if (range) {
     const [s, e]  = range.replace(/bytes=/, '').split('-');
     const start   = parseInt(s, 10);
-    const end     = e ? parseInt(e, 10) : Math.min(start + 10 * 1024 * 1024, fileSize - 1);
-    const chunk   = end - start + 1;
+
+    // Return 416 Range Not Satisfiable when start is beyond the file
+    if (isNaN(start) || start >= fileSize) {
+      res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+      return res.end();
+    }
+
+    // Clamp end so it never exceeds the last byte of the file.
+    // Fall back to a 10 MB chunk when the end byte is absent or unparseable.
+    const parsedEnd = e ? parseInt(e, 10) : NaN;
+    const end   = Math.min(isNaN(parsedEnd) ? start + 10 * 1024 * 1024 : parsedEnd, fileSize - 1);
+    const chunk = end - start + 1;
 
     res.writeHead(206, {
       'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
@@ -490,14 +500,24 @@ app.get('/api/stream/:id', (req, res) => {
       'Content-Length': chunk,
       'Content-Type':   contentType,
     });
-    fs.createReadStream(item.path, { start, end }).pipe(res);
+    const readStream = fs.createReadStream(item.path, { start, end });
+    readStream.on('error', (streamErr) => {
+      console.error('[stream] Read error:', streamErr.message);
+      if (!res.writableEnded) res.end();
+    });
+    readStream.pipe(res);
   } else {
     res.writeHead(200, {
       'Content-Length': fileSize,
       'Content-Type':   contentType,
       'Accept-Ranges':  'bytes',
     });
-    fs.createReadStream(item.path).pipe(res);
+    const readStream = fs.createReadStream(item.path);
+    readStream.on('error', (streamErr) => {
+      console.error('[stream] Read error:', streamErr.message);
+      if (!res.writableEnded) res.end();
+    });
+    readStream.pipe(res);
   }
 });
 
