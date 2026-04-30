@@ -193,13 +193,28 @@ function startTranscoding(seekTo) {
 video.addEventListener('error', () => {
   const err = video.error;
   if (!err) return;
-  const isCodecError = err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED ||
-                       err.code === MediaError.MEDIA_ERR_DECODE;
+
+  vspinner.style.display = 'none';
+
+  // Aborted by the browser (e.g. src change mid-load) — not a real error
+  if (err.code === MediaError.MEDIA_ERR_ABORTED) return;
+
+  const isNetworkError = err.code === MediaError.MEDIA_ERR_NETWORK;
+  const isCodecError   = err.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED ||
+                         err.code === MediaError.MEDIA_ERR_DECODE;
+
+  if (isNetworkError) {
+    // The server returned an error or the file could not be read.
+    // Show a helpful message instead of a silent black screen.
+    codecMsg.textContent = 'Could not load the video. The file may have been moved or the server is unreachable.';
+    if (btnTranscode) btnTranscode.style.display = 'none';
+    codecBanner.classList.add('show');
+    return;
+  }
 
   if (isCodecError && isTranscoding) {
     // Transcoding itself failed — surface an error
     isTranscoding = false;
-    vspinner.style.display = 'none';
     codecMsg.textContent = 'Transcoding failed. The file may be corrupt or unsupported.';
     if (btnTranscode) btnTranscode.style.display = '';
     codecBanner.classList.add('show');
