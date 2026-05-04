@@ -975,16 +975,23 @@ function renderTvShows() {
     return;
   }
 
-  // Group by show_name
+  // Group by show_name (case-insensitive so e.g. "True Detective" and
+  // "true detective" are treated as the same show)
   const shows = {};
   for (const ep of tvItems) {
-    const name = ep.show_name || ep.title;
-    if (!shows[name]) {
-      shows[name] = { name, items: [], poster_path: ep.poster_path, backdrop_path: ep.backdrop_path };
+    const rawName = ep.show_name || ep.title;
+    const key = rawName.toLowerCase();
+    const hasUpperCase = rawName !== rawName.toLowerCase();
+    if (!shows[key]) {
+      shows[key] = { name: rawName, hasProperCase: hasUpperCase, items: [], poster_path: ep.poster_path, backdrop_path: ep.backdrop_path };
+    } else if (!shows[key].hasProperCase && hasUpperCase) {
+      // Upgrade from an all-lowercase name to a properly-cased one (first seen wins)
+      shows[key].name = rawName;
+      shows[key].hasProperCase = true;
     }
-    shows[name].items.push(ep);
+    shows[key].items.push(ep);
     // Prefer item that has a poster
-    if (!shows[name].poster_path && ep.poster_path) shows[name].poster_path = ep.poster_path;
+    if (!shows[key].poster_path && ep.poster_path) shows[key].poster_path = ep.poster_path;
   }
 
   const showList = Object.values(shows);
@@ -1016,7 +1023,8 @@ function renderTvShows() {
 
 function openTvShow(showName) {
   currentTvShow = showName;
-  const items = allMedia.filter(m => (m.show_name || m.title) === showName && m.media_type === 'tv');
+  const nameLower = showName.toLowerCase();
+  const items = allMedia.filter(m => (m.show_name || m.title).toLowerCase() === nameLower && m.media_type === 'tv');
   const seasons = [...new Set(items.map(e => e.season).filter(s => s != null))].sort((a, b) => a - b);
 
   currentSeason = null; // show season selection first
