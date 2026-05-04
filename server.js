@@ -246,6 +246,72 @@ app.get('/api/browse', (req, res) => {
 // ── Scan API ───────────────────────────────────────────────────────────────────
 let scanState = { inProgress: false, total: 0, processed: 0, current: '', errors: [] };
 
+/**
+ * Remove duplicate TV episode rows from the DB.
+ * Release folders often contain more than one video file for the same episode
+ * (e.g. the main MKV plus a bonus/alternate track).  When that results in two
+ * DB rows for the same show+season+episode, keep the one whose file is largest
+ * on disk and delete the rest.
+ */
+function cleanupDuplicateTvEpisodes() {
+  const allItems = db.getAllMedia().filter(
+    m => m.media_type === 'tv' && m.season != null && m.episode != null,
+  );
+
+  const groups = {};
+  for (const item of allItems) {
+    const key = `${(item.show_name || item.title || '').toLowerCase()}|${item.season}|${item.episode}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(item);
+  }
+
+  for (const items of Object.values(groups)) {
+    if (items.length <= 1) continue;
+    const sized = items.map(item => {
+      let size = 0;
+      try { size = fs.statSync(item.path).size; } catch {}
+      return { item, size };
+    }).sort((a, b) => b.size - a.size);
+
+    // Keep the largest file; delete the rest
+    for (let i = 1; i < sized.length; i++) {
+      db.deleteMedia(sized[i].item.id);
+    }
+  }
+}
+
+/**
+ * From a list of file paths, deduplicate TV episodes:
+ * if multiple files parse to the same show+season+episode, keep only the
+ * largest one.  This prevents release folders that contain several video
+ * files for the same episode from being indexed as separate entries.
+ */
+function dedupTvFiles(filePaths) {
+  const episodeMap = new Map(); // episode key -> { filePath, size }
+  const result = [];
+
+  for (const filePath of filePaths) {
+    const tvParsed = parseTvFilename(path.basename(filePath), filePath);
+    if (!tvParsed) {
+      result.push(filePath);
+      continue;
+    }
+    const key = `${tvParsed.showName.toLowerCase()}|${tvParsed.season}|${tvParsed.episode}`;
+    let size = 0;
+    try { size = fs.statSync(filePath).size; } catch {}
+    const existing = episodeMap.get(key);
+    if (!existing || size > existing.size) {
+      episodeMap.set(key, { filePath, size });
+    }
+  }
+
+  for (const { filePath } of episodeMap.values()) {
+    result.push(filePath);
+  }
+
+  return result;
+}
+
 /** Core scan logic — shared by HTTP endpoint and startup auto-scan. */
 async function runScan() {
   const config = db.getConfig();
@@ -254,7 +320,14 @@ async function runScan() {
   scanState = { inProgress: true, total: 0, processed: 0, current: '', errors: [] };
 
   try {
-    const files = config.mediaFolders.flatMap(f => scanDirectory(f));
+    const rawFiles = config.mediaFolders.flatMap(f => scanDirectory(f));
+
+    // Remove existing duplicate TV episode rows before re-scanning
+    cleanupDuplicateTvEpisodes();
+
+    // Deduplicate: if a release folder contains multiple video files for the
+    // same episode, keep only the largest so we don't create duplicate rows.
+    const files = dedupTvFiles(rawFiles);
     scanState.total = files.length;
 
     // Cache TV show metadata so we only fetch once per show
