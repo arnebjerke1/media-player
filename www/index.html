@@ -1311,6 +1311,8 @@ function parseFilename(name) {
     let showName = s.slice(0, idx);
     showName = showName.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
     showName = showName.replace(/[-–]+\s*$/, '').trim();
+    // Normalise to title case so that "detective" and "Detective" resolve to the same show
+    showName = showName.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
     return { title: showName, year: null, isTv: true, showName, season, episode };
   }
 
@@ -2524,8 +2526,18 @@ video.addEventListener('error',   () => {
   }
   let msg = 'This file could not be played.';
   if (err) {
-    if (err.code === 4) msg = 'This device could not decode this file in the built-in player. You can open it in an external player instead.';
-    else msg = `Playback error (code ${err.code}): ${err.message}`;
+    if (err.code === 4) {
+      const fname = (currentMovie?.filename || '').toLowerCase();
+      if (/\bav1\b/.test(fname)) {
+        msg = 'AV1 video is not supported in this browser. Try converting the file to H.264/H.265, or use a native video player app.';
+      } else if (/\btruehd\b/.test(fname)) {
+        msg = 'TrueHD audio is not supported in this browser. Use a native video player app for full audio quality.';
+      } else {
+        msg = 'This device could not decode this file in the built-in player. You can open it in an external player instead.';
+      }
+    } else {
+      msg = `Playback error (code ${err.code}): ${err.message}`;
+    }
   }
   alert(msg);
 });
@@ -2790,15 +2802,16 @@ function renderTvShows() {
     return;
   }
 
-  // Group by show_name
+  // Group by show_name (case-insensitive so "Detective" and "detective" merge)
   const shows = {};
   for (const ep of tvItems) {
     const name = ep.show_name || ep.title;
-    if (!shows[name]) {
-      shows[name] = { name, items: [], poster: ep.poster };
+    const key  = name.toLowerCase();
+    if (!shows[key]) {
+      shows[key] = { name, items: [], poster: ep.poster };
     }
-    shows[name].items.push(ep);
-    if (!shows[name].poster && ep.poster) shows[name].poster = ep.poster;
+    shows[key].items.push(ep);
+    if (!shows[key].poster && ep.poster) shows[key].poster = ep.poster;
   }
 
   const showList = Object.values(shows);
@@ -2831,7 +2844,7 @@ function renderTvShows() {
 
 function openTvShow(showName) {
   currentTvShow = showName;
-  const items   = library.filter(m => (m.show_name || m.title) === showName && m.media_type === 'tv');
+  const items   = library.filter(m => (m.show_name || m.title).toLowerCase() === showName.toLowerCase() && m.media_type === 'tv');
   const seasons = [...new Set(items.map(e => e.season).filter(s => s != null))].sort((a, b) => a - b);
   currentSeason = seasons[0] ?? null;
 

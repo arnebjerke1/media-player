@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -11,6 +12,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -21,9 +24,11 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.ui.PlayerView;
 
 /**
@@ -83,6 +88,7 @@ public class PlayerActivity extends Activity {
             WindowManager.LayoutParams.FLAG_FULLSCREEN |
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         );
+        applyImmersiveMode();
 
         url     = getIntent().getStringExtra(EXTRA_URL);
         mediaId = getIntent().getIntExtra(EXTRA_MEDIA_ID, 0);
@@ -91,6 +97,39 @@ public class PlayerActivity extends Activity {
 
         buildLayout(title);
         setupPlayer(url, startMs);
+    }
+
+    /**
+     * Hide the navigation bar and status bar using immersive sticky mode.
+     * On Android 11+ uses the new WindowInsetsController API; on older versions
+     * falls back to the deprecated (but still functional) setSystemUiVisibility.
+     */
+    @SuppressWarnings("deprecation")
+    private void applyImmersiveMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            final WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            );
+        }
+    }
+
+    /** Re-apply immersive mode whenever the window regains focus (e.g. after dismissing a dialog). */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyImmersiveMode();
     }
 
     @Override
@@ -116,7 +155,22 @@ public class PlayerActivity extends Activity {
 
     // ── Player setup ──────────────────────────────────────────────────────────
     private void setupPlayer(String videoUrl, long startMs) {
-        player = new ExoPlayer.Builder(this).build();
+        // Prefer lossless / high-quality audio tracks (TrueHD, E-AC3 JOC/Atmos, E-AC3, AC3)
+        // so that files with a TrueHD primary track are not silently downgraded to a companion AC3.
+        DefaultTrackSelector trackSelector = new DefaultTrackSelector(this);
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .setPreferredAudioMimeTypes(
+                    MimeTypes.AUDIO_TRUEHD,
+                    MimeTypes.AUDIO_EAC3_JOC,
+                    MimeTypes.AUDIO_EAC3,
+                    MimeTypes.AUDIO_AC3
+                )
+                .build()
+        );
+        player = new ExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
+            .build();
         playerView.setPlayer(player);
         playerView.setUseController(false);   // we draw our own controls
 
