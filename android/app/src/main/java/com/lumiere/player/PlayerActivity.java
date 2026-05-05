@@ -155,7 +155,7 @@ public class PlayerActivity extends Activity {
 
     // ── Player setup ──────────────────────────────────────────────────────────
     private void setupPlayer(String videoUrl, long startMs) {
-        // Prefer lossless / high-quality audio tracks (TrueHD, E-AC3 JOC/Atmos, E-AC3, AC3)
+        // Prefer high-quality audio tracks: TrueHD (lossless), E-AC3 JOC (Atmos), E-AC3, AC3 —
         // so that files with a TrueHD primary track are not silently downgraded to a companion AC3.
         DefaultTrackSelector trackSelector = new DefaultTrackSelector(this);
         trackSelector.setParameters(

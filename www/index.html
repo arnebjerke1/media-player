@@ -1311,8 +1311,6 @@ function parseFilename(name) {
     let showName = s.slice(0, idx);
     showName = showName.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
     showName = showName.replace(/[-–]+\s*$/, '').trim();
-    // Normalise to title case so that "detective" and "Detective" resolve to the same show
-    showName = showName.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
     return { title: showName, year: null, isTv: true, showName, season, episode };
   }
 
