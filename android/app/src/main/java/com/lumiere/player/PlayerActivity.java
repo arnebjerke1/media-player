@@ -4,13 +4,19 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.media.AudioManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.GestureDetector;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -61,6 +67,11 @@ public class PlayerActivity extends Activity {
     private int         mediaId;
     private String      url;
 
+    private boolean     isLocked        = false;
+    private ImageButton btnLock;
+    private GestureDetector gestureDetector;
+    private AudioManager audioManager;
+
     private final Handler handler    = new Handler(Looper.getMainLooper());
     private final Runnable hideCtrl  = () -> setControlsVisible(false);
     private final Runnable updateSeek = new Runnable() {
@@ -75,14 +86,13 @@ public class PlayerActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Full-screen, keep screen on
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN |
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN |
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        );
+        // Keep screen on; immersive mode (hides both status bar AND nav bar) is
+        // applied via hideSystemUI() so it can be re-applied on window focus changes.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        hideSystemUI();
+
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
 
         url     = getIntent().getStringExtra(EXTRA_URL);
         mediaId = getIntent().getIntExtra(EXTRA_MEDIA_ID, 0);
@@ -90,6 +100,7 @@ public class PlayerActivity extends Activity {
         long   startMs = getIntent().getLongExtra(EXTRA_POSITION, 0L);
 
         buildLayout(title);
+        setupGestures();
         setupPlayer(url, startMs);
     }
 
@@ -111,7 +122,102 @@ public class PlayerActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (isLocked) return;   // swallow back press when locked
         finishWithResult();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // Re-apply immersive mode whenever the window regains focus (e.g. after a dialog).
+        if (hasFocus) hideSystemUI();
+    }
+
+    // Hides both the status bar and the navigation bar using immersive sticky mode.
+    // Uses WindowInsetsController on API 30+ and the legacy flags on older devices.
+    @SuppressWarnings("deprecation")
+    private void hideSystemUI() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController ctrl = getWindow().getInsetsController();
+            if (ctrl != null) {
+                ctrl.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                ctrl.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            );
+        }
+    }
+
+    // Swipe up/down on left half → brightness; right half → volume.
+    // Single tap → toggle controls.
+    private void setupGestures() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            private static final int SWIPE_THRESHOLD = 20;
+
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (isLocked) {
+                    // When locked, a tap shows just the lock icon briefly
+                    setControlsVisible(true);
+                } else {
+                    toggleControls();
+                }
+                return true;
+            }
+
+            @Override
+            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distX, float distY) {
+                if (isLocked || e1 == null) return false;
+                if (Math.abs(distY) < SWIPE_THRESHOLD) return false;
+
+                int screenWidth = getWindow().getDecorView().getWidth();
+                boolean leftSide = e1.getX() < screenWidth / 2f;
+
+                if (leftSide) {
+                    adjustBrightness(distY > 0 ? 0.05f : -0.05f);
+                } else {
+                    adjustVolume(distY > 0 ? 1 : -1);
+                }
+                return true;
+            }
+        });
+    }
+
+    private void toggleLock() {
+        isLocked = !isLocked;
+        btnLock.setImageResource(isLocked
+            ? android.R.drawable.ic_lock_lock
+            : android.R.drawable.ic_lock_idle_lock);
+        if (isLocked) {
+            // Hide everything except the lock button itself
+            handler.removeCallbacks(hideCtrl);
+            // Keep overlay visible so lock button stays tappable, but hide bottom bar
+            controlsOverlay.setVisibility(View.VISIBLE);
+        } else {
+            scheduleHide();
+        }
+    }
+
+    private void adjustVolume(int direction) {
+        audioManager.adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            direction > 0 ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
+            AudioManager.FLAG_SHOW_UI
+        );
+    }
+
+    private void adjustBrightness(float delta) {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        float current = lp.screenBrightness < 0 ? 0.5f : lp.screenBrightness;
+        lp.screenBrightness = Math.max(0.01f, Math.min(1.0f, current + delta));
+        getWindow().setAttributes(lp);
     }
 
     // ── Player setup ──────────────────────────────────────────────────────────
@@ -164,8 +270,11 @@ public class PlayerActivity extends Activity {
         // Controls overlay (transparent, sits above video)
         controlsOverlay = buildControlsOverlay(root, title);
 
-        // Tap anywhere on the video to toggle controls
-        playerView.setOnClickListener(v -> toggleControls());
+        // Touch handling is set up in setupGestures() after gestureDetector is created
+        playerView.setOnTouchListener((v, event) -> {
+            if (gestureDetector != null) gestureDetector.onTouchEvent(event);
+            return true;
+        });
     }
 
     @SuppressLint("SetTextI18n")
@@ -206,6 +315,14 @@ public class PlayerActivity extends Activity {
         titleLp.setMarginStart(dp8);
         topBar.addView(titleView, titleLp);
 
+        // Lock button — tap to lock/unlock all controls
+        btnLock = new ImageButton(this);
+        btnLock.setImageResource(android.R.drawable.ic_lock_idle_lock);
+        btnLock.setBackground(null);
+        btnLock.setColorFilter(Color.WHITE);
+        btnLock.setPadding(dp8, dp8, dp8, dp8);
+        topBar.addView(btnLock, new LinearLayout.LayoutParams(dp48, dp48));
+
         FrameLayout.LayoutParams topLp = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT);
@@ -213,6 +330,7 @@ public class PlayerActivity extends Activity {
         overlay.addView(topBar, topLp);
 
         btnBack.setOnClickListener(v -> finishWithResult());
+        btnLock.setOnClickListener(v -> toggleLock());
 
         // ── Bottom bar ────────────────────────────────────────────────────────
         LinearLayout bottomBar = new LinearLayout(this);
@@ -318,8 +436,16 @@ public class PlayerActivity extends Activity {
 
     private void setControlsVisible(boolean visible) {
         controlsVisible = visible;
-        controlsOverlay.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
-        if (visible) scheduleHide();
+        if (isLocked) {
+            // When locked only show the lock button; hide the rest after a moment
+            controlsOverlay.setVisibility(View.VISIBLE);
+            if (visible) handler.postDelayed(() -> {
+                if (isLocked) controlsOverlay.setVisibility(View.INVISIBLE);
+            }, 1500);
+        } else {
+            controlsOverlay.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
+            if (visible) scheduleHide();
+        }
     }
 
     private void scheduleHide() {
